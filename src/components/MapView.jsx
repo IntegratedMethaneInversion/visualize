@@ -4,7 +4,6 @@ import React, {
 import { createPortal } from 'react-dom';
 import {
   MapContainer,
-  TileLayer,
   GeoJSON,
   useMap,
   useMapEvents,
@@ -13,6 +12,7 @@ import L                from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import parseGeoraster        from 'georaster';
 import GeoRasterLayer        from 'georaster-layer-for-leaflet';
+import { VectorBasemap }     from './VectorBasemap';
 import { useDatasetContext } from '../context/DatasetContext';
 import { useEmissionData }   from '../hooks/useEmissionData';
 import { useDisplayUnit }    from '../hooks/useDisplayUnit';
@@ -135,26 +135,6 @@ function getValueAtLatLngFromGrid(gridMeta, values, lat, lng, { allowZero = fals
   const v = values[latIdx * nlon + lonIdx];
   if (v == null || !Number.isFinite(v) || (!allowZero && v <= 0)) return null;
   return v;
-}
-
-// ─── LabelsPane ───────────────────────────────────────────────────────────────
-// Hosts the basemap's place-name tiles above every data overlay. The data panes
-// run 645–650 (see RasterLayer / JsonGridLayer / CountryGridLayer), so 660 puts
-// labels on top. pointer-events:none keeps region clicks and grid hover working.
-
-// The pane is built during render, not in an effect: the label TileLayer is a
-// sibling, and Leaflet throws when a layer names a pane that does not exist yet.
-function LabelsPane() {
-  const map = useMap();
-
-  useMemo(() => {
-    if (map.getPane('labelPane')) return;
-    const pane = map.createPane('labelPane');
-    pane.style.zIndex = '660';
-    pane.style.pointerEvents = 'none';
-  }, [map]);
-
-  return null;
 }
 
 // ─── MapController ────────────────────────────────────────────────────────────
@@ -1063,18 +1043,6 @@ function StateBorderLayer({ geojson, selectedState, onStateClick }) {
   );
 }
 
-// ─── AdminBorderOverlay ────────────────────────────────────────────────────────
-// Purely decorative admin-1 outlines (e.g. US states) drawn over the global
-// choropleth. Non-interactive so clicks pass through to the country layer
-// beneath it.
-
-const ADMIN_BORDER_STYLE = { fillOpacity: 0, color: 'rgba(255,255,255,0.35)', weight: 0.5, interactive: false };
-
-function AdminBorderOverlay({ geojson }) {
-  if (!geojson) return null;
-  return <GeoJSON data={geojson} style={ADMIN_BORDER_STYLE} interactive={false} />;
-}
-
 // ─── MapView (exported) ───────────────────────────────────────────────────────
 
 export function MapView() {
@@ -1298,29 +1266,8 @@ export function MapView() {
         {/* Keeps view, bounds and zoom limits in sync after dataset switches */}
         <MapController mapConfig={mapConfig} />
 
-        {/*
-          Basemap is split into geometry + labels so place names draw ABOVE the
-          data overlays (which sit on panes at z-index 645–650). With a single
-          dark_all layer the labels get buried the moment any grid is shown.
-
-          Do NOT set tileSize/zoomOffset here: CARTO serves a 256-tile scheme
-          and uses {r}=@2x for retina, so the Mapbox-style 512/-1 pairing just
-          renders one zoom level coarser than the map actually is.
-        */}
-        <TileLayer
-          url={`https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png?key=${import.meta.env.VITE_CARTO_API_KEY}`}
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          subdomains="abcd"
-          maxZoom={20}
-        />
-
-        <LabelsPane />
-        <TileLayer
-          url={`https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png?key=${import.meta.env.VITE_CARTO_API_KEY}`}
-          subdomains="abcd"
-          maxZoom={20}
-          pane="labelPane"
-        />
+        {/* Creates its own labelPane and keeps place names above the data */}
+        <VectorBasemap />
 
         {/* Grid hover tooltip — TIF mode only */}
         {isGridMode && (!activeDataset.gridType || isPeriodGrid) && (
@@ -1450,14 +1397,6 @@ export function MapView() {
             gridMeta={activeUploadSector?.gridMeta}
             values={activeJsonGridValues}
             units={uploadedData.meta?.units || (display.legendUnits ?? display.units)}
-          />
-        )}
-
-        {/* US state outlines (global map only) — decorative, non-interactive */}
-        {activeDataset.gridType === 'country-mask' && baseData?.usStatesGeoJSON && (
-          <AdminBorderOverlay
-            key={`admin-borders-${activeDataset.id}`}
-            geojson={baseData.usStatesGeoJSON}
           />
         )}
 

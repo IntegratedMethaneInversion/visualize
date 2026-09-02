@@ -194,15 +194,11 @@ registerDataset({
   },
 
   async dataLoader() {
-    const [rows, rangesRows, countriesGeoJSON, usStatesGeoJSON] = await Promise.all([
+    const [rows, rangesRows, countriesGeoJSON] = await Promise.all([
       fetchCSV(`${import.meta.env.BASE_URL}data/emissions_data3.csv`),
       fetchCSV(`${import.meta.env.BASE_URL}data/ch4_global/website_data_withranges.csv`),
       fetch(`${import.meta.env.BASE_URL}data/world-countries.json`).then(r => {
         if (!r.ok) throw new Error(`world-countries.json: HTTP ${r.status}`);
-        return r.json();
-      }),
-      fetch(`${import.meta.env.BASE_URL}data/ne/us_states_simplified.geojson`).then(r => {
-        if (!r.ok) throw new Error(`us_states_simplified.geojson: HTTP ${r.status}`);
         return r.json();
       }),
     ]);
@@ -267,7 +263,6 @@ registerDataset({
       sectorKeys:      CSV_SECTOR_KEYS,
       sectorRanges:    loadSectorRanges(rangesRows), // Sector Breakdown chart's sole data source — see loadSectorRanges
       statesGeoJSON:   countriesGeoJSON,
-      usStatesGeoJSON,
       manifest:        null,
     };
   },

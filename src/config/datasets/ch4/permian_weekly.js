@@ -38,7 +38,7 @@ registerDataset({
   gridType: 'period', // signals MapView/Legend to resolve tif urls via manifest.data[satellite][sector][period]
 
   mapConfig: {
-    initialViewState: { latitude: 32, longitude: -104, zoom: 4 },
+    initialViewState: { latitude: 32, longitude: -104, zoom: 7 },
     minZoom: 3,
     maxZoom: 12,
     maxBounds: [[22, -130], [52, -60]],
