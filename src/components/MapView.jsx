@@ -28,6 +28,7 @@ import {
   computeChoroplethDomain,
   centralCol,
   parseNumber,
+  hasUncertainty,
 } from '../utils/emissionsUtils';
 import { rasterMax } from '../utils/gridStats';
 
@@ -306,36 +307,46 @@ function useJsonGridMax(url) {
 // Source control is set to prior; callers should treat a null result as
 // "no uncertainty available" rather than an error.
 //
-// TotalAnth and Natural aren't native ensemble variables, so their spread is
-// approximated by summing the constituent sectors' min/max element-wise —
-// the same aggregation rule the per-country data files use for the central
-// value (see build_country_sector_grids.py's `aggregates`), just applied to
-// the bounds instead of the estimate. Summing independent bounds like this
-// is a worst-case approximation (assumes every sector errs the same
+// TotalAnth, Natural and Waste aren't native ensemble variables, so their
+// spread is approximated by summing the constituent sectors' min/max
+// element-wise — the same aggregation rule the per-country data files use for
+// the central value (see build_country_sector_grids.py's `aggregates`), just
+// applied to the bounds instead of the estimate. Summing independent bounds
+// like this is a worst-case approximation (assumes every sector errs the same
 // direction at once), not a statistically rigorous propagation — reasonable
 // for a hover tooltip, but worth knowing if this number is ever used for
-// anything more rigorous.
+// anything more rigorous. `Total` needs no such approximation: the file ships
+// a native Total_Excl_Soil, which is exactly the country CSV's `Total`
+// definition (anthropogenic + wetlands + termites + seeps, soil excluded).
 const ENSEMBLE_MINMAX_URL = `${import.meta.env.BASE_URL}data/ch4_global/ensemble_minmax.json.gz`;
 
 // Native ensemble variable name -> the Sector dropdown value it corresponds
-// to (see global.js's SECTOR_OPTIONS). Only OG/OilAndGas differ in spelling.
+// to (see global.js's SECTOR_OPTIONS). Only OG/OilAndGas and
+// Total_Excl_Soil/Total differ in spelling.
 const NATIVE_SECTOR_TO_CONTROL = {
-  BiomassBurn: 'BiomassBurn',
-  Coal:        'Coal',
-  Landfills:   'Landfills',
-  Livestock:   'Livestock',
-  OG:          'OilAndGas',
-  OtherAnth:   'OtherAnth',
-  Rice:        'Rice',
-  Wastewater:  'Wastewater',
-  Reservoirs:  'Reservoirs',
-  Wetlands:    'Wetlands',
+  BiomassBurn:     'BiomassBurn',
+  Coal:            'Coal',
+  Livestock:       'Livestock',
+  OG:              'OilAndGas',
+  OtherAnth:       'OtherAnth',
+  Rice:            'Rice',
+  Reservoirs:      'Reservoirs',
+  Wetlands:        'Wetlands',
+  Total_Excl_Soil: 'Total',
 };
-// Termites + Seeps aren't independently selectable — only needed to derive Natural.
-const NATIVE_SECTORS_NEEDED = [...Object.keys(NATIVE_SECTOR_TO_CONTROL), 'Termites', 'Seeps'];
-// Mirrors build_country_sector_grids.py's `aggregates` (TotalAnth excludes Wetlands).
+// Fetched to build the aggregates below, but not independently selectable:
+// the country CSV has landfills and wastewater only as a merged `Waste`, and
+// termites and seeps only inside `Natural`.
+const COMPONENT_ONLY_SECTORS = ['Landfills', 'Wastewater', 'Termites', 'Seeps'];
+const NATIVE_SECTORS_NEEDED  = [...Object.keys(NATIVE_SECTOR_TO_CONTROL), ...COMPONENT_ONLY_SECTORS];
+
+// Mirrors build_country_sector_grids.py's `aggregates` (TotalAnth excludes
+// Wetlands but includes BiomassBurn, matching global.js's SECTORS).
 const TOTAL_ANTH_SECTORS = ['BiomassBurn', 'Coal', 'Landfills', 'Livestock', 'OG', 'OtherAnth', 'Rice', 'Wastewater', 'Reservoirs'];
 const NATURAL_SECTORS    = ['Termites', 'Seeps'];
+// The country CSV only has landfills and wastewater merged, so the dropdown's
+// `Waste` is the aggregate — the gridded products keep them separate.
+const WASTE_SECTORS      = ['Landfills', 'Wastewater'];
 
 // Fetched once per session and cached at module scope — CountryGridLayer
 // remounts (new `key`) on every country switch, but that should never
@@ -401,14 +412,16 @@ function useGlobalEnsembleMinMax() {
           for (const [native, controlValue] of Object.entries(NATIVE_SECTOR_TO_CONTROL)) {
             bySector[controlValue] = denseBySector[native];
           }
-          bySector.TotalAnth = {
-            minValues: sumDense(length, TOTAL_ANTH_SECTORS.map(s => denseBySector[s].minValues)),
-            maxValues: sumDense(length, TOTAL_ANTH_SECTORS.map(s => denseBySector[s].maxValues)),
-          };
-          bySector.Natural = {
-            minValues: sumDense(length, NATURAL_SECTORS.map(s => denseBySector[s].minValues)),
-            maxValues: sumDense(length, NATURAL_SECTORS.map(s => denseBySector[s].maxValues)),
-          };
+          for (const [controlValue, natives] of [
+            ['TotalAnth', TOTAL_ANTH_SECTORS],
+            ['Natural',   NATURAL_SECTORS],
+            ['Waste',     WASTE_SECTORS],
+          ]) {
+            bySector[controlValue] = {
+              minValues: sumDense(length, natives.map(s => denseBySector[s].minValues)),
+              maxValues: sumDense(length, natives.map(s => denseBySector[s].maxValues)),
+            };
+          }
 
           return { gridMeta: { lats, lons }, bySector };
         })
@@ -430,6 +443,12 @@ function useGlobalEnsembleMinMax() {
 // Same portal tooltip as GridHoverLayer but uses the flat JSON values array
 // instead of a parsed georaster (the polygon layer is non-interactive).
 
+// NOTE: unlike CountryGridLayer's tooltip (ch4-global, whose cells are Tg/yr
+// totals and so track the units selector), this one is deliberately left
+// unconverted. Its callers pass display.legendUnits, which for Colombia is a
+// flux density — kg km⁻² h⁻¹, not a mass — and for an uploaded grid is
+// whatever string the file declared. Neither is something the mass-unit
+// selector can rescale, so the raw value and its own label are shown as-is.
 function JsonGridHoverLayer({
   gridMeta, values, minValues, maxValues, units,
 }) {
@@ -736,27 +755,35 @@ function cellBBox(geometry) {
   return Number.isFinite(minLat) ? { minLat, maxLat, minLon, maxLon } : null;
 }
 
-// Sector dropdown value -> the country_sectors/*.json property key holding
-// that sector's estimate. Only OilAndGas/OG differ in spelling; TotalAnth
-// and Natural are shipped precomputed under the same rule the ensemble
-// aggregation above mirrors, so no frontend summing is needed for the value.
-const CONTROL_SECTOR_TO_FILE_KEY = { OilAndGas: 'OG' };
+// Sector dropdown value -> the country_sectors/*.json property key(s) holding
+// that sector's estimate; multiple keys are summed. Only OilAndGas/OG differs
+// in spelling. TotalAnth, Natural and Total are shipped precomputed under the
+// same rule the ensemble aggregation above mirrors, so they need no summing.
+// `Waste` is the one real aggregate here: these grids keep landfills and
+// wastewater separate, while the country CSV only has them merged.
+const CONTROL_SECTOR_TO_FILE_KEYS = {
+  OilAndGas: ['OG'],
+  Waste:     WASTE_SECTORS,
+};
 
-function emissionsPropertyKey(sector, satellite) {
-  const key = CONTROL_SECTOR_TO_FILE_KEY[sector] ?? sector;
-  return `emissions_${key}_${satellite === 'prior' ? 'prior' : 'post'}`;
+function emissionsPropertyKeys(sector, satellite) {
+  const suffix = satellite === 'prior' ? 'prior' : 'post';
+  const keys   = CONTROL_SECTOR_TO_FILE_KEYS[sector] ?? [sector];
+  return keys.map(k => `emissions_${k}_${suffix}`);
 }
 
 // Cells omit zero-valued sector keys entirely (most cells are dominated by
 // 1-2 sectors), so a missing key is a real, meaningful zero — not missing data.
-function readEmissions(properties, propertyKey) {
-  return properties?.[propertyKey] ?? 0;
+function readEmissions(properties, propertyKeys) {
+  let total = 0;
+  for (const key of propertyKeys) total += properties?.[key] ?? 0;
+  return total;
 }
 
-function domainMaxFor(features, propertyKey) {
+function domainMaxFor(features, propertyKeys) {
   let max = 0;
   for (const f of features) {
-    const v = readEmissions(f.properties, propertyKey);
+    const v = readEmissions(f.properties, propertyKeys);
     if (v > max) max = v;
   }
   return max;
@@ -769,7 +796,12 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
   const ensembleMinMax = useGlobalEnsembleMinMax();
   const layerRef = useRef(null);
   const rendererRef = useRef(null);
-  const styleRef = useRef({ colorStops, opacity, domainMax: 1, propertyKey: 'emissions_TotalAnth_post' });
+  // Placeholder until the fetch below resolves and overwrites it. Derived
+  // rather than hardcoded so it can't drift from the sector definitions.
+  const styleRef = useRef({
+    colorStops, opacity, domainMax: 1,
+    propertyKeys: emissionsPropertyKeys('TotalAnth', 'posterior'),
+  });
   styleRef.current.colorStops = colorStops;
   styleRef.current.opacity = opacity;
   const cellsRef = useRef([]);
@@ -777,8 +809,8 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
   const [hover, setHover] = useState(null);
 
   const styleFeature = useCallback((feature) => {
-    const { colorStops: cs, opacity: op, domainMax: dm, propertyKey } = styleRef.current;
-    const v = readEmissions(feature.properties, propertyKey);
+    const { colorStops: cs, opacity: op, domainMax: dm, propertyKeys } = styleRef.current;
+    const v = readEmissions(feature.properties, propertyKeys);
     const t = dm > 0 ? Math.max(0, Math.min(1, v / dm)) : 0;
     return { color: 'transparent', weight: 0, fillColor: stopsToColor(t, cs), fillOpacity: op };
   }, []);
@@ -799,12 +831,12 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
         const features = data.features ?? [];
         featuresRef.current = features;
 
-        const propertyKey       = emissionsPropertyKey(controls.sector, controls.satellite);
-        const domainPropertyKey = emissionsPropertyKey(pinnedSector ?? controls.sector, controls.satellite);
-        const rawDomainMax      = domainMaxFor(features, domainPropertyKey);
-        const scaleMax          = controls.colorScaleMax ?? 1.0;
-        styleRef.current.propertyKey = propertyKey;
-        styleRef.current.domainMax   = (rawDomainMax || 1) * scaleMax;
+        const propertyKeys       = emissionsPropertyKeys(controls.sector, controls.satellite);
+        const domainPropertyKeys = emissionsPropertyKeys(pinnedSector ?? controls.sector, controls.satellite);
+        const rawDomainMax       = domainMaxFor(features, domainPropertyKeys);
+        const scaleMax           = controls.colorScaleMax ?? 1.0;
+        styleRef.current.propertyKeys = propertyKeys;
+        styleRef.current.domainMax    = (rawDomainMax || 1) * scaleMax;
 
         cellsRef.current = features
           .map(f => {
@@ -882,12 +914,12 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
   // no refetch.
   useEffect(() => {
     if (!layerRef.current || !featuresRef.current.length) return;
-    const propertyKey       = emissionsPropertyKey(controls.sector, controls.satellite);
-    const domainPropertyKey = emissionsPropertyKey(pinnedSector ?? controls.sector, controls.satellite);
-    const rawDomainMax      = domainMaxFor(featuresRef.current, domainPropertyKey);
-    const scaleMax          = controls.colorScaleMax ?? 1.0;
-    styleRef.current.propertyKey = propertyKey;
-    styleRef.current.domainMax   = (rawDomainMax || 1) * scaleMax;
+    const propertyKeys       = emissionsPropertyKeys(controls.sector, controls.satellite);
+    const domainPropertyKeys = emissionsPropertyKeys(pinnedSector ?? controls.sector, controls.satellite);
+    const rawDomainMax       = domainMaxFor(featuresRef.current, domainPropertyKeys);
+    const scaleMax           = controls.colorScaleMax ?? 1.0;
+    styleRef.current.propertyKeys = propertyKeys;
+    styleRef.current.domainMax    = (rawDomainMax || 1) * scaleMax;
     layerRef.current.setStyle(styleFeature);
     onDomainReady?.(rawDomainMax > 0 ? { min: 0, max: rawDomainMax } : null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -901,8 +933,8 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
       );
       if (!hit) { setHover(null); return; }
 
-      const propertyKey = emissionsPropertyKey(controls.sector, controls.satellite);
-      const value = readEmissions(hit.properties, propertyKey);
+      const propertyKeys = emissionsPropertyKeys(controls.sector, controls.satellite);
+      const value = readEmissions(hit.properties, propertyKeys);
 
       // The file's grid and the ensemble's grid are both the native
       // 0.25°x0.3125° model grid, but look up by this cell's own center
@@ -953,7 +985,15 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
 
 function ChoroplethLayer({
   geojson, stateDataMap, colKey, domain, colorStops, opacity, suppressTooltipFor, onStateClick,
+  sectorRanges, sector, satellite,
 }) {
+  // Tooltip numbers follow the dashboard-wide units selector, same as the 2x2
+  // totals and the grid-cell tooltip. Note that react-leaflet only runs
+  // onEachFeature at layer construction, so already-bound tooltips can't be
+  // rewritten in place — the caller's `key` includes the unit label for that
+  // reason, remounting the layer when units change.
+  const { convert, label: units } = useDisplayUnit();
+
   // onEachFeature only runs once, at layer construction, so a plain closure
   // over `opacity` would go stale after the slider moves — the mouseout
   // handler reads this ref instead to always reset to the current value.
@@ -985,10 +1025,29 @@ function ChoroplethLayer({
     (feature, layer) => {
       const name = getFeatureName(feature);
       const row  = stateDataMap?.[name];
-      const val  = row ? parseNumber(row[colKey]) : null;
+      const val  = convert(row ? parseNumber(row[colKey]) : null);
+
+      // Uncertainty, where the dataset supplies it, comes from the same
+      // country/sector ranges the Sector Breakdown chart plots — and is
+      // posterior-only. Those are +/- delta magnitudes rather than absolute
+      // bounds, and a delta can exceed its own central value, so the lower
+      // bound clamps at 0 exactly as buildRangesBarData does. Collapsed to a
+      // single +/- figure (the larger of the two deviations) to match the
+      // grid-cell tooltip and the bar chart's tooltip.
+      const entry = hasUncertainty(satellite)
+        ? sectorRanges?.byCountry?.[name]?.[sector]
+        : null;
+      let spread = null;
+      if (entry?.post != null && entry.minDelta != null && entry.maxDelta != null) {
+        const lower = Math.max(0, entry.post - entry.minDelta);
+        const upper = entry.post + entry.maxDelta;
+        spread = convert(Math.max(0, entry.post - lower, upper - entry.post));
+      }
 
       layer.bindTooltip(
-        `<strong>${name}</strong><br />${val != null ? val.toFixed(3) : 'N/A'}`,
+        `<strong>${name}</strong><br />${formatMassValue(val)}`
+        + (spread != null ? ` ± ${formatMassValue(spread)}` : '')
+        + (units ? ` <span class="choropleth-tooltip-units">${units}</span>` : ''),
         { sticky: true },
       );
       layer.on('tooltipopen', () => {
@@ -1000,7 +1059,7 @@ function ChoroplethLayer({
         mouseout(e)  { e.target.setStyle({ weight: 0.6, color: '#1a1a2e', fillOpacity: opacityRef.current }); },
       });
     },
-    [onStateClick, stateDataMap, colKey],
+    [onStateClick, stateDataMap, colKey, convert, units, sectorRanges, sector, satellite],
   );
 
   if (!geojson) return null;
@@ -1059,6 +1118,10 @@ export function MapView() {
   } = useDatasetContext();
 
   const { data: baseData, loading, error } = useEmissionData();
+
+  // Only needed for ChoroplethLayer's remount key — that layer's tooltips are
+  // bound once at construction and can't be rewritten when units change.
+  const { label: displayUnitLabel } = useDisplayUnit();
 
   const { mapConfig, display, dataRoot } = activeDataset;
   const colorStops = display.colorScale?.stops ?? [];
@@ -1282,7 +1345,7 @@ export function MapView() {
         {/* Choropleth — keyed by dataset so GeoJSON remounts on dataset switch */}
         {!isGridMode && baseData?.statesGeoJSON && (
           <ChoroplethLayer
-            key={`ch-${activeDataset.id}-${controls.year}-${controls.satellite}-${colKey}`}
+            key={`ch-${activeDataset.id}-${controls.year}-${controls.satellite}-${colKey}-${displayUnitLabel}`}
             geojson={baseData.statesGeoJSON}
             stateDataMap={stateDataMap}
             colKey={colKey}
@@ -1295,6 +1358,9 @@ export function MapView() {
             }
             suppressTooltipFor={activeDataset.gridType === 'country-mask' ? selectedState : null}
             onStateClick={handleStateClick}
+            sectorRanges={baseData.sectorRanges}
+            sector={controls.sector}
+            satellite={controls.satellite}
           />
         )}
 

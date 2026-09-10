@@ -28,7 +28,7 @@ const DEFAULT_PERIOD = periodsForYear(DEFAULT_YEAR)[0]?.key;
 registerDataset({
   id:       'ch4-permian-weekly',
   family:   'CH4',
-  name:     'Permian Basin',
+  name:     'Permian Basin - Weekly',
   dataRoot: DATA_ROOT,
   description: 'Weekly methane emissions for the Permian basin generated with the IMI using TROPOMI satellite data. See Varon et al. (2025) for details.',
   citation: { text: 'Varon et al. (2025)', url: 'https://pubs.acs.org/esthag/article/60/1/425/5082337/Seasonality-and-Declining-Intensity-of-Methane' },

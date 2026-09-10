@@ -3,91 +3,104 @@ import { fetchCSV, parseNumber }   from '../../../utils/emissionsUtils';
 
 const YEAR = 2023; // only year available for this dataset
 
-// column names from emissions_data3.csv. possibly going to be deprecated once new
-// data source added. 
-// These are options for map view sector dropdown menu.
-// these are also 'sectorKeys' for DataTotals.jsx -- used for 2x2 sum totals table
-// NOT used for sector bar chart, see RANGES_SECTORS below for that. 
-const SECTOR_OPTIONS = [
-  { value: 'TotalAnth',   label: 'Total (Anthropogenic)' },
-  { value: 'Livestock',   label: 'Livestock'     },
-  { value: 'Coal',        label: 'Coal'          },
-  { value: 'OilAndGas',   label: 'Oil & Gas'     },
-  { value: 'Rice',        label: 'Rice'          },
-  { value: 'Landfills',   label: 'Landfills'     },
-  { value: 'Wastewater',  label: 'Wastewater'    },
-  { value: 'Reservoirs',  label: 'Reservoirs'    },
-  { value: 'OtherAnth',   label: 'Other Anthropogenic' },
-  { value: 'Wetlands',    label: 'Wetlands'      },
-  { value: 'BiomassBurn', label: 'Biomass Burning' },
-  { value: 'Natural',     label: 'Other Natural' },
+// One file backs this whole dataset's country-level numbers: the 2x2 totals,
+// the choropleth, the country hover tooltip and the Sector Breakdown chart's
+// values *and* uncertainty. It supersedes both emissions_data3.csv (older
+// inversion vintage, no natural-sector uncertainty) and
+// website_data_withranges.csv (anthropogenic sectors only) — neither is read
+// anywhere any more.
+//
+// Its `UNFCCC_total_*` sibling column in emissions_data_new.csv is not needed:
+// it equals `AnthroTotal - Reservoirs` exactly (verified for all 161 countries
+// in both estimates), i.e. the inventory-reportable subset, not a separate
+// estimate. Derive it if it's ever wanted rather than loading a second file.
+const CSV_URL = 'data/ch4_global/website_data_withranges_withnatural.csv';
+
+// ─── Single source of truth for this dataset's sectors ───────────────────────
+// The map's Sector dropdown, the Sector Breakdown bars and dataLoader's column
+// mapping all derive from this table. The keys are also what MapView
+// translates into grid/ensemble variable names, so renaming one here means
+// updating CONTROL_SECTOR_TO_FILE_KEYS / NATIVE_SECTOR_TO_CONTROL there too.
+//
+//   key    internal sector key; also the Sector dropdown's value
+//   label  user-facing text, shared by the dropdown and the bar chart
+//   csv    column prefix(es) in CSV_URL — an array is summed
+//   unc    column prefix for the `_post_min`/`_post_max` uncertainty deltas,
+//          defaulting to `csv`
+//   group  which category the sector belongs to. Nothing reads it yet; it's
+//          here so the anthropogenic/natural split is stated once, in the
+//          same place as the arithmetic that depends on it.
+//
+// `unc` exists as its own field because the file's totals carry *propagated*
+// deltas that are genuinely narrower than the sum of their components'
+// (China: AnthroTotal_post_min 9.44 vs 10.42 for its seven sectors). So an
+// aggregate must read its own delta column wherever the file provides one,
+// never the sum of its parts'.
+// `includes` lists an aggregate's constituent sub-sectors, in the wording the
+// Sector Breakdown tooltip shows. Only set where the composition is actually
+// knowable from the source data: `Other` is a leaf column in every file we
+// have rather than an aggregate, so there is nothing to enumerate for it.
+const SECTORS = [
+  { key: 'Total',       label: 'Total (all sources)', csv: 'Total',                        group: 'total',
+    includes: ['every anthropogenic and natural sector below', 'excludes soil absorption'] },
+  // Value includes biomass burning — the file's `AnthroTotal` leaves it in the
+  // natural residual, but the gridded product has always counted it as
+  // anthropogenic (see each country_sectors/*.json's metadata.aggregates), and
+  // this dashboard follows the grid. The *delta* stays `AnthroTotal`'s alone:
+  // there's no propagated eight-sector column in the file, and adding biomass
+  // burning's delta on top would contradict the propagation the rest of the
+  // column does. Biomass burning is ~15 of ~390 Tg/yr globally, so this
+  // understates the total's spread slightly rather than inflating it.
+  { key: 'TotalAnth',   label: 'Total anthropogenic', csv: ['AnthroTotal', 'BiomassBurn'],
+                                                      unc: 'AnthroTotal',                  group: 'total',
+    includes: ['livestock', 'oil & gas', 'coal', 'rice', 'waste', 'reservoirs',
+               'biomass burning', 'other anthropogenic'] },
+  { key: 'Livestock',   label: 'Livestock',           csv: 'Livestock',                    group: 'anthro'  },
+  { key: 'OilAndGas',   label: 'Oil & gas',           csv: 'Oil-Gas',                      group: 'anthro'  },
+  { key: 'Coal',        label: 'Coal',                csv: 'Coal',                         group: 'anthro'  },
+  { key: 'Rice',        label: 'Rice cultivation',    csv: 'Rice',                         group: 'anthro'  },
+  { key: 'Waste',       label: 'Waste',               csv: 'Waste',                        group: 'anthro',
+    includes: ['landfills', 'wastewater'] },
+  { key: 'Reservoirs',  label: 'Reservoirs',          csv: 'Reservoirs',                   group: 'anthro'  },
+  { key: 'BiomassBurn', label: 'Biomass burning',     csv: 'BiomassBurn',                  group: 'anthro'  },
+  { key: 'OtherAnth',   label: 'Other anthropogenic', csv: 'Other',                        group: 'anthro'  },
+  { key: 'Wetlands',    label: 'Wetlands',            csv: 'Wetlands',                     group: 'natural' },
+  // Termites + seeps. Unlike the two totals above there's no propagated
+  // combined delta in the file, so this one does sum its components' — a
+  // worst-case widening, but seeps are tiny next to termites (2 vs 18 Tg/yr
+  // globally) so the overlap it ignores is small.
+  { key: 'Natural',     label: 'Other Natural',       csv: ['Termites', 'Seeps'],          group: 'natural',
+    includes: ['termites', 'seeps'] },
 ];
-const CSV_SECTOR_KEYS = SECTOR_OPTIONS.map(o => o.value);
 
-// Used for creating sector breakdown chart. Data comes from 
-// website_data_withranges.csv, which is the country- and sector-level 
-// totals + uncertainty file.
-// This is currently missing non-anthro sources; update pending. 
-const RANGES_SECTORS = [
-  { key: 'TotalAnth',  label: 'Total',      columnPrefix: 'AnthroTotal' },
-  { key: 'Livestock',  label: 'Livestock',  columnPrefix: 'Livestock'   },
-  { key: 'Coal',       label: 'Coal',       columnPrefix: 'Coal'        },
-  { key: 'OilAndGas',  label: 'Oil & Gas',  columnPrefix: 'Oil-Gas'     },
-  { key: 'Rice',       label: 'Rice',       columnPrefix: 'Rice'        },
-  { key: 'Reservoirs', label: 'Reservoirs', columnPrefix: 'Reservoirs'  },
-  { key: 'Waste',      label: 'Waste',      columnPrefix: 'Waste'       },
-  { key: 'Other',      label: 'Other',      columnPrefix: 'Other'       },
-];
-const RANGES_SECTOR_KEYS   = RANGES_SECTORS.map(s => s.key);
-const RANGES_COLUMN_PREFIX = Object.fromEntries(RANGES_SECTORS.map(s => [s.key, s.columnPrefix]));
+const SECTOR_KEYS = SECTORS.map(s => s.key);
+const SECTOR_OPTIONS = SECTORS.map(({ key, label }) => ({ value: key, label }));
 
-// Builds { sectorKeys, byCountry, world } from website_data_withranges.csv's
-// rows: byCountry[countryName][sectorKey] = { prior, post, minDelta, maxDelta },
-// where minDelta/maxDelta are the file's own +/- uncertainty magnitudes (not
-// absolute bounds — SectorBarChart derives the absolute lower/upper bound as
-// post -/+ delta, clamping the lower bound to 0). `world` is the same shape,
-// summed across every country the file covers (154 of the 173 in
-// emissions_data3.csv; there's no separate world-level row in the source).
-function loadSectorRanges(rangesRows) {
-  const byCountry  = {};
-  const worldSums  = {};
+const asArray = v => (Array.isArray(v) ? v : [v]);
 
-  for (const raw of rangesRows) {
-    const name = raw.countries?.trim();
-    if (!name) continue;
-
-    const bySector = {};
-    for (const key of RANGES_SECTOR_KEYS) {
-      const prefix   = RANGES_COLUMN_PREFIX[key];
-      const prior    = parseNumber(raw[`${prefix}_prior`]);
-      const post     = parseNumber(raw[`${prefix}_post`]);
-      const minDelta = parseNumber(raw[`${prefix}_post_min`]);
-      const maxDelta = parseNumber(raw[`${prefix}_post_max`]);
-      bySector[key] = { prior, post, minDelta, maxDelta };
-
-      const sums = worldSums[key] ?? (worldSums[key] = { prior: null, post: null, minDelta: null, maxDelta: null });
-      if (prior    != null) sums.prior    = (sums.prior    ?? 0) + prior;
-      if (post     != null) sums.post     = (sums.post     ?? 0) + post;
-      if (minDelta != null) sums.minDelta = (sums.minDelta ?? 0) + minDelta;
-      if (maxDelta != null) sums.maxDelta = (sums.maxDelta ?? 0) + maxDelta;
-    }
-    byCountry[name] = bySector;
+// Sums one sector's column prefixes for a given suffix. Returns null only when
+// every component is missing, so a present-but-zero component still yields 0
+// rather than reading as "no data" — the difference decides whether a
+// choropleth country greys out or colors at the bottom of the scale.
+function sumColumns(raw, prefixes, suffix) {
+  let total = null;
+  for (const prefix of prefixes) {
+    const v = parseNumber(raw[`${prefix}${suffix}`]);
+    if (v == null) continue;
+    total = (total ?? 0) + v;
   }
-
-  return { sectorKeys: RANGES_SECTOR_KEYS, byCountry, world: worldSums };
+  return total;
 }
 
 // world-countries.json (Natural Earth) identifies features by ADMIN name,
-// which diverges from this CSV's "countries" column for a handful of
-// countries/territories. Maps CSV name -> ADMIN name so the choropleth join
-// (keyed on ADMIN, see MapView's getFeatureName) succeeds for these too.
+// which diverges from this CSV's "countries" column. Maps CSV name -> ADMIN
+// name so the choropleth join (keyed on ADMIN, see MapView's getFeatureName)
+// succeeds. Only Congo still needs one: the other five countries this table
+// used to cover (Bahamas, Falkland Is., North Cyprus, Solomon Is.,
+// Timor-Leste) aren't in the current data file at all, so their entries were
+// dead weight.
 const ADMIN_ALIASES = {
-  'Bahamas':      'The Bahamas',
-  'Congo':        'Republic of the Congo',
-  'Falkland Is.': 'Falkland Islands',
-  'North Cyprus': 'Northern Cyprus',
-  'Solomon Is.':  'Solomon Islands',
-  'Timor-Leste':  'East Timor',
+  'Congo': 'Republic of the Congo',
 };
 
 registerDataset({
@@ -95,9 +108,6 @@ registerDataset({
   family: 'CH4',
   name:   'Global',
   description: 'Annual methane emissions by country at 25-km resolution generated with the IMI using TROPOMI satellite data combined with bottom-up information from national BTRs. See East et al. (2025) for details.',
-  /*
-  description: 'Annual anthropogenic methane emissions by country at 25 km resolution, from East et al. (2025) . Anthropogenic national emission estimates from UNFCCC reports and natural emission estimates from various inventories are corrected by inversion of TROPOMI satellite methane observations to produce best estimates of emissions.',
-  */
   citation: { text: 'East et al. (2025)', url: 'https://www.nature.com/articles/s41467-025-67122-8' },
   satellites: ['TROPOMI'],
 
@@ -112,16 +122,6 @@ registerDataset({
   },
 
   controls: [
-    /*{
-      key:     'viewMode',
-      label:   'Map View',
-      type:    'radio',
-      options: [
-        { value: 'grid',       label: 'Grid'       },
-        { value: 'choropleth', label: 'Shaded Map' },
-      ],
-      default: 'choropleth',
-    },*/
     {
       key:     'satellite',
       label:   'Data Source',
@@ -172,9 +172,14 @@ registerDataset({
     legendUnits:      'Tg/yr',
     defaultPlaceLabel: 'Global', // shown in chart headers when no country is selected
     totalsLabels: { bottomUp: 'Bottom-up', posterior: 'IMI Best Estimate' }, // column headers on the DataTotals table
-    // Order + labels for the Sector Breakdown bar chart — see RANGES_SECTORS
-    // above, which is this control's single source of truth.
-    barSectors: RANGES_SECTORS.map(({ key, label }) => ({ key, label })),
+    // Order, labels and sub-sector lists for the Sector Breakdown bar chart,
+    // straight off SECTORS so the bars and the Sector dropdown can never drift
+    // apart on wording or arithmetic.
+    barSectors: SECTORS.map(({ key, label, includes }) => ({ key, label, includes })),
+    // 12 bars x 2 series needs more vertical room and wider tick labels than
+    // the 8-sector CONUS chart these default to.
+    barChartHeight: 620,
+    barLabelWidth:  150,
     colorScale: {
       stops: [
         [0,    '#ffffcc'],
@@ -194,19 +199,24 @@ registerDataset({
   },
 
   async dataLoader() {
-    const [rows, rangesRows, countriesGeoJSON] = await Promise.all([
-      fetchCSV(`${import.meta.env.BASE_URL}data/emissions_data3.csv`),
-      fetchCSV(`${import.meta.env.BASE_URL}data/ch4_global/website_data_withranges.csv`),
+    const [rows, countriesGeoJSON] = await Promise.all([
+      fetchCSV(`${import.meta.env.BASE_URL}${CSV_URL}`),
       fetch(`${import.meta.env.BASE_URL}data/world-countries.json`).then(r => {
         if (!r.ok) throw new Error(`world-countries.json: HTTP ${r.status}`);
         return r.json();
       }),
     ]);
 
-    const byYear             = { [YEAR]: {} };
-    const stateByYearPrior   = { [YEAR]: {} };
-    const worldPosterior     = {};
-    const worldPrior         = {};
+    const byYear           = { [YEAR]: {} };
+    const stateByYearPrior = { [YEAR]: {} };
+    const worldPrior       = {};
+    const worldPosterior   = {};
+    const rangesByCountry  = {};
+    // `world` row for the Sector Breakdown chart when no country is selected.
+    // Its deltas are summed across countries, which — like `Natural` above —
+    // is the worst case rather than a propagation; the file has no world row
+    // to read a propagated figure from.
+    const rangesWorld      = {};
 
     const addTo = (acc, key, v) => {
       if (v == null) return;
@@ -218,41 +228,46 @@ registerDataset({
       if (!csvName) continue;
       const name = ADMIN_ALIASES[csvName] ?? csvName;
 
-      // byYear: both suffixes present, for choropleth coloring in either
+      // byYear: both suffixes present, so the choropleth can color in either
       // Data Source mode (see computeChoroplethDomain / centralCol).
-      const row = {};
-      // stateByYearPrior: bare keys, prior only — backs the bottom-up bar
-      // chart branch (buildBarData's satellite === 'prior' path).
+      const row       = {};
+      // stateByYearPrior: bare keys, prior only — the bottom-up column of the
+      // 2x2 totals table reads this.
       const priorBare = {};
+      // sectorRanges: per-sector central values + uncertainty deltas, for the
+      // Sector Breakdown chart and the country hover tooltip.
+      const bySector  = {};
 
-      for (const s of CSV_SECTOR_KEYS) {
-        const prior = parseNumber(raw[`${s}_prior`]);
-        const post  = parseNumber(raw[`${s}_post`]);
-        row[`${s}_prior`]     = prior;
-        row[`${s}_posterior`] = post;
-        priorBare[s]          = prior;
-        addTo(worldPrior,     s, prior);
-        addTo(worldPosterior, s, post);
+      for (const s of SECTORS) {
+        const csvPrefixes = asArray(s.csv);
+        const uncPrefixes = asArray(s.unc ?? s.csv);
+
+        const prior    = sumColumns(raw, csvPrefixes, '_prior');
+        const post     = sumColumns(raw, csvPrefixes, '_post');
+        const minDelta = sumColumns(raw, uncPrefixes, '_post_min');
+        const maxDelta = sumColumns(raw, uncPrefixes, '_post_max');
+
+        row[`${s.key}_prior`]     = prior;
+        row[`${s.key}_posterior`] = post;
+        priorBare[s.key]          = prior;
+        bySector[s.key]           = { prior, post, minDelta, maxDelta };
+
+        addTo(worldPrior,     s.key, prior);
+        addTo(worldPosterior, s.key, post);
+
+        const sums = rangesWorld[s.key]
+          ?? (rangesWorld[s.key] = { prior: null, post: null, minDelta: null, maxDelta: null });
+        if (prior    != null) sums.prior    = (sums.prior    ?? 0) + prior;
+        if (post     != null) sums.post     = (sums.post     ?? 0) + post;
+        if (minDelta != null) sums.minDelta = (sums.minDelta ?? 0) + minDelta;
+        if (maxDelta != null) sums.maxDelta = (sums.maxDelta ?? 0) + maxDelta;
       }
-
-      const totalAnthPrior = parseNumber(raw.Total_Anth_Prior);
-      const totalAnthPost  = parseNumber(raw.Total_Anth_Post);
-      row.TotalAnth_prior     = totalAnthPrior;
-      row.TotalAnth_posterior = totalAnthPost;
-      priorBare.TotalAnth      = totalAnthPrior;
-      addTo(worldPrior,     'TotalAnth', totalAnthPrior);
-      addTo(worldPosterior, 'TotalAnth', totalAnthPost);
-
-      const totalPrior = parseNumber(raw.Total_prior);
-      const totalPost  = parseNumber(raw.Total_posterior);
-      row.Total_prior     = totalPrior;
-      row.Total_posterior = totalPost;
-      priorBare.Total      = totalPrior;
-      addTo(worldPrior,     'Total', totalPrior);
-      addTo(worldPosterior, 'Total', totalPost);
 
       byYear[YEAR][name]           = row;
       stateByYearPrior[YEAR][name] = priorBare;
+      // Keyed on the ADMIN name, matching selectedState — the choropleth and
+      // the bar chart/tooltip lookups all go through the same alias.
+      rangesByCountry[name]        = bySector;
     }
 
     return {
@@ -260,10 +275,10 @@ registerDataset({
       nationalPosterior: { [YEAR]: worldPosterior },
       nationalPrior:     { [YEAR]: worldPrior },
       stateByYearPrior,
-      sectorKeys:      CSV_SECTOR_KEYS,
-      sectorRanges:    loadSectorRanges(rangesRows), // Sector Breakdown chart's sole data source — see loadSectorRanges
-      statesGeoJSON:   countriesGeoJSON,
-      manifest:        null,
+      sectorKeys:   SECTOR_KEYS,
+      sectorRanges: { sectorKeys: SECTOR_KEYS, byCountry: rangesByCountry, world: rangesWorld },
+      statesGeoJSON: countriesGeoJSON,
+      manifest:      null,
     };
   },
 });

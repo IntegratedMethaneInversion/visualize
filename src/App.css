@@ -220,6 +220,15 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
   font-size:   .7rem;
 }
 
+/* Units suffix inside the country choropleth's Leaflet tooltip. Mirrors
+   .grid-hover-units, but has to be its own rule: that tooltip is built by
+   Leaflet's bindTooltip rather than rendered into .grid-hover-tooltip. */
+.choropleth-tooltip-units {
+  font-weight: 400;
+  opacity:     0.65;
+  font-size:   .9em;
+}
+
 /* Controls */
 .control-panel        { display: flex; flex-direction: column; gap: .9rem; }
 .control-panel-title  { font-size: .68rem; text-transform: uppercase;

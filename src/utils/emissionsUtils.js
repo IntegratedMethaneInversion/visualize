@@ -239,12 +239,14 @@ export function buildBottomUpLineData(baseData, { mode, sectorKey, selectedState
   return { years, values };
 }
 
-// ─── ch4-global Sector Breakdown chart (website_data_withranges.csv) ─────────
+// ─── ch4-global Sector Breakdown chart (sectorRanges) ────────────────────────
 // Unlike buildBarData, this reads directly from dataLoader's `sectorRanges`
-// (country -> sector -> {prior, post, minDelta, maxDelta} / a `world` sum
-// across all covered countries — see global.js's loadSectorRanges) rather
-// than the emissions_data3.csv-backed byYear/national* structures, since
-// that CSV has no reliable per-sector uncertainty.
+// (country -> sector -> {prior, post, minDelta, maxDelta}, plus a `world` sum
+// across all covered countries — see global.js's dataLoader) rather than the
+// byYear/national* structures, because only sectorRanges carries the
+// per-sector uncertainty. Both now come from the same CSV, so their central
+// values agree by construction; the country hover tooltip in MapView reads
+// sectorRanges too, for the same reason.
 //
 // sectorRanges stores minDelta/maxDelta as +/- magnitudes, not absolute
 // bounds, so the absolute lower/upper bound is `post -/+ delta` — and since

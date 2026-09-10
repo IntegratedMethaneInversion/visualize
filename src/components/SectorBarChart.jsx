@@ -45,7 +45,7 @@ function resolveBarSectors(labels, barSectors) {
   const indexByKey = new Map(labels.map((key, i) => [key, i]));
   return barSectors
     .filter(({ key }) => indexByKey.has(key))
-    .map(({ key, label }) => ({ key, label, i: indexByKey.get(key) }));
+    .map(({ key, label, includes }) => ({ key, label, includes, i: indexByKey.get(key) }));
 }
 
 // Builds Sector Breakdown chart rows from a { labels, values, mins, maxs }
@@ -54,8 +54,10 @@ function resolveBarSectors(labels, barSectors) {
 // branches below, which differ only in which data-building functions
 // produced `data`/`bottomUpData`.
 function buildSectorRows(resolvedSectors, data, bottomUpData, { showUncertainty, showBottomUp, convert }) {
-  return resolvedSectors.map(({ label, i }) => ({
+  return resolvedSectors.map(({ label, includes, i }) => ({
     sector:        label,
+    // Sub-sector list for aggregate bars; the tooltip renders it when present.
+    includes,
     value:         convert(data.values[i]),
     errorRange:    showUncertainty && data.mins[i] != null
       ? [convert(data.mins[i]), convert(data.maxs[i])]
@@ -133,6 +135,7 @@ function SectorBarCustomTooltip({
   const val        = postEntry?.value;
   const errorRange = postEntry?.payload?.errorRange;
   const buVal      = buEntry?.value;
+  const includes   = postEntry?.payload?.includes;
 
   // Same +/- convention as the map's grid-cell hover tooltip: the larger of
   // the two (possibly asymmetric) deltas around the central value, collapsed
@@ -157,10 +160,25 @@ function SectorBarCustomTooltip({
       fontSize:     '0.85rem',
       lineHeight:   1.65,
       minWidth:     '9rem',
+      maxWidth:     '17rem',
     }}>
       <div style={{ color: accent, fontWeight: 700, marginBottom: '0.15rem' }}>
         {label}
       </div>
+      {/* Aggregate bars name their components, so a merged bucket like
+          "Other Natural" doesn't have to be guessed at from the label. */}
+      {includes?.length > 0 && (
+        <div style={{
+          color:        DIM_COLOR,
+          fontWeight:   400,
+          fontSize:     '0.72rem',
+          lineHeight:   1.4,
+          marginBottom: '0.3rem',
+          whiteSpace:   'normal',
+        }}>
+          Includes {includes.join(', ')}
+        </div>
+      )}
       {rows.map(row => (
         <div
           key={row.name}
@@ -207,9 +225,15 @@ function SectorChartHeader({ place, year, units, loading, showBottomUp, accent }
 // { sector, value, errorDelta, bottomUpValue } rows (i.e. everything except
 // the single-series user-upload chart, which has no bottom-up/uncertainty
 // series and uses its own tooltip).
-function SectorBarChartBody({ chartData, accent, displayUnits, showUncertainty, showBottomUp }) {
+// `height`/`labelWidth` default to what the 8-sector CONUS chart has always
+// used; datasets with more bars or longer sector names override them via
+// display.barChartHeight / display.barLabelWidth.
+function SectorBarChartBody({
+  chartData, accent, displayUnits, showUncertainty, showBottomUp,
+  height = 500, labelWidth = 90,
+}) {
   return (
-    <ResponsiveContainer width="100%" height={500}>
+    <ResponsiveContainer width="100%" height={height}>
       <BarChart
         layout="vertical"
         data={chartData}
@@ -232,7 +256,7 @@ function SectorBarChartBody({ chartData, accent, displayUnits, showUncertainty, 
           tick={{ fill: '#94a3b8', fontSize: 14 }}
           axisLine={false}
           tickLine={false}
-          width={90}
+          width={labelWidth}
         />
 
         <Tooltip
@@ -415,6 +439,8 @@ export function SectorBarChart() {
           displayUnits={displayUnits}
           showUncertainty={showUncertainty}
           showBottomUp={showBottomUp}
+          height={activeDataset.display?.barChartHeight}
+          labelWidth={activeDataset.display?.barLabelWidth}
         />
       </div>
     );
