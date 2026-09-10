@@ -1,14 +1,38 @@
 import React, {
   createContext, useContext, useReducer,
-  useState, useCallback, useMemo
+  useState, useCallback, useMemo, useEffect, useRef
 } from 'react';
-import { getDataset, getAllDatasets, getDatasetsByFamily } from '../config/datasetRegistry';
+import { getDataset, hasDataset, getAllDatasets, getDatasetsByFamily } from '../config/datasetRegistry';
 import { getFamily, getAllFamilies }                        from '../config/familyRegistry';
+import { readUrlParams, controlsFromUrl, resolveFeatureName, reflectUrl } from '../utils/urlParams';
 import '../config/families/index';
 import '../config/datasets/index';
 
 function defaultControls(dataset) {
   return Object.fromEntries(dataset.controls.map(c => [c.key, c.default]));
+}
+
+// Any control whose valid options depend on another control's value (e.g. a
+// "week" slider scoped to the selected "year") gets reclamped to its nearest
+// valid value if some other change just made its current value stale.
+// `fixed` names the controls that were just set deliberately, which must be
+// left exactly as asked.
+function reclampControls(dataset, controls, fixed) {
+  const next = { ...controls };
+  for (const c of dataset.controls) {
+    if (fixed.has(c.key) || typeof c.options !== 'function') continue;
+    const validValues = c.options(next).map(o => (o && typeof o === 'object' ? o.value : o));
+    if (validValues.length && !validValues.includes(next[c.key])) {
+      const current = next[c.key];
+      // Numeric controls (e.g. a "week" slider scoped to a "year" select)
+      // snap to the nearest still-valid value; others keep the original
+      // "most recent" fallback (e.g. satellite change narrowing years).
+      next[c.key] = typeof current === 'number'
+        ? validValues.reduce((a, b) => Math.abs(b - current) < Math.abs(a - current) ? b : a)
+        : validValues[validValues.length - 1];
+    }
+  }
+  return next;
 }
 
 function reducer(state, action) {
@@ -41,26 +65,15 @@ function reducer(state, action) {
     }
 
     case 'SET_CONTROL': {
-      const newControls = { ...state.controls, [action.key]: action.value };
-
-      // Any other control whose valid options depend on this one (e.g. a
-      // "week" slider scoped to the selected "year") gets reclamped to its
-      // nearest valid value if the change just made its current value stale.
       const dataset = getDataset(state.activeDatasetId);
-      for (const c of dataset.controls) {
-        if (c.key === action.key || typeof c.options !== 'function') continue;
-        const validValues = c.options(newControls).map(o => (o && typeof o === 'object' ? o.value : o));
-        if (validValues.length && !validValues.includes(newControls[c.key])) {
-          const current = newControls[c.key];
-          // Numeric controls (e.g. a "week" slider scoped to a "year" select)
-          // snap to the nearest still-valid value; others keep the original
-          // "most recent" fallback (e.g. satellite change narrowing years).
-          newControls[c.key] = typeof current === 'number'
-            ? validValues.reduce((a, b) => Math.abs(b - current) < Math.abs(a - current) ? b : a)
-            : validValues[validValues.length - 1];
-        }
-      }
-      return { ...state, controls: newControls };
+      return {
+        ...state,
+        controls: reclampControls(
+          dataset,
+          { ...state.controls, [action.key]: action.value },
+          new Set([action.key]),
+        ),
+      };
     }
 
     default:
@@ -68,10 +81,16 @@ function reducer(state, action) {
   }
 }
 
-const DatasetContext = createContext(null);
+// ─── Initial state ────────────────────────────────────────────────────────────
+// The query string (?dataset=…&sector=…&year=…) is applied here rather than in
+// a mount effect on purpose: SET_DATASET resets every control and clears the
+// selection, so a re-dispatch would have to be sequenced across commits and
+// would flash the default view first — which is exactly what an automated
+// screenshot would capture if it fired early.
 
-export function DatasetProvider({ initialFamilyId, initialDatasetId, children }) {
+function initState({ initialFamilyId, initialDatasetId }) {
   const allFamilies = getAllFamilies();
+  const url         = readUrlParams();
 
   let resolvedDatasetId, resolvedFamilyId;
   if (initialDatasetId) {
@@ -83,16 +102,66 @@ export function DatasetProvider({ initialFamilyId, initialDatasetId, children })
     resolvedDatasetId = getDatasetsByFamily(resolvedFamilyId)[0]?.id;
   }
 
-  const initialDataset = getDataset(resolvedDatasetId);
-  const [state, dispatch] = useReducer(reducer, {
+  // What the app would have loaded with no query string — kept so the URL
+  // reflection below can leave the default view on a bare path.
+  const defaultDatasetId = resolvedDatasetId;
+
+  // An unknown ?dataset= id is ignored rather than fatal: a bad param should
+  // degrade to the default view, never to a blank page.
+  if (url.datasetId && hasDataset(url.datasetId)) {
+    const ds          = getDataset(url.datasetId);
+    resolvedDatasetId = ds.id;
+    resolvedFamilyId  = ds.family;
+  }
+
+  const dataset             = getDataset(resolvedDatasetId);
+  const { controls, touched } = controlsFromUrl(dataset, url.params, defaultControls(dataset));
+
+  return {
     activeFamily:        resolvedFamilyId,
     activeDatasetId:     resolvedDatasetId,
-    controls:            defaultControls(initialDataset),
+    // A URL-set control can invalidate a default one it scopes (e.g. satellite
+    // narrowing the year list), same as changing it through the UI would.
+    controls:            reclampControls(dataset, controls, touched),
     lastDatasetByFamily: { [resolvedFamilyId]: resolvedDatasetId },
-  });
+    defaultDatasetId,
+  };
+}
 
-  // ── Selected region (map click → chart interaction) ──────────────────────
+const DatasetContext = createContext(null);
+
+export function DatasetProvider({ initialFamilyId, initialDatasetId, children }) {
+  const allFamilies = getAllFamilies();
+
+  const [state, dispatch] = useReducer(
+    reducer, { initialFamilyId, initialDatasetId }, initState,
+  );
+
+  // ── URL-supplied initial state ───────────────────────────────────────────
+  // Dataset and controls were already applied by initState; the country param
+  // can't be, because the canonical spelling it has to normalise to lives in
+  // the dataset's GeoJSON, which hasn't loaded yet. MapView calls
+  // hydrateCountry once it has.
+  const url = readUrlParams();
   const [selectedState, setSelectedStateRaw] = useState(null);
+  const [urlHydrated, setUrlHydrated]        = useState(!url.country);
+  // The feature name ?country= resolved to, so ?zoom=/?center= can stay scoped
+  // to it rather than following the user onto the next country they click.
+  const [urlCountry, setUrlCountry]          = useState(null);
+  const countryHydratedRef                   = useRef(false);
+
+  const hydrateCountry = useCallback((featureNames, aliases) => {
+    if (countryHydratedRef.current) return;
+    countryHydratedRef.current = true;
+    // An unrecognised country leaves the world view in place rather than
+    // erroring — same rule as an unknown dataset id.
+    const name = resolveFeatureName(url.country, featureNames, aliases);
+    if (name) { setSelectedStateRaw(name); setUrlCountry(name); }
+    setUrlHydrated(true);
+  }, [url.country]);
+
+  // The ad-hoc framing override, live only while its own country is selected.
+  const urlView = (urlCountry && selectedState === urlCountry) ? url.view : null;
 
   // ── JSON grid domain (reported by JsonGridLayer, consumed by Legend) ──────
   const [jsonGridDomain, setJsonGridDomain] = useState(null);
@@ -148,6 +217,25 @@ export function DatasetProvider({ initialFamilyId, initialDatasetId, children })
     if (key === 'mode') setSelectedStateRaw(null);
   }, []);
 
+  // ── Reflect the current view back into the URL ───────────────────────────
+  // So a link can be copied out of the address bar, and so the right param
+  // values can be discovered by clicking around. Held until hydration is done,
+  // or this would overwrite the very params it's still waiting to apply.
+  useEffect(() => {
+    if (!urlHydrated) return;
+    reflectUrl({
+      dataset:          getDataset(state.activeDatasetId),
+      defaultDatasetId: state.defaultDatasetId,
+      controls:         state.controls,
+      country:          selectedState,
+      fit:              url.fit,
+      view:             urlView,
+    });
+  }, [
+    urlHydrated, state.activeDatasetId, state.controls, state.defaultDatasetId,
+    selectedState, url.fit, urlView,
+  ]);
+
   const value = useMemo(() => ({
     activeFamily:           getFamily(state.activeFamily),
     allFamilies,
@@ -169,10 +257,18 @@ export function DatasetProvider({ initialFamilyId, initialDatasetId, children })
     clearUploadedData,
     massUnit,
     setMassUnit,
+    // ?fit=1 — MapView zooms to the selected country's bounds instead of
+    // leaving the viewport on the whole-world default.
+    fitToSelection: url.fit,
+    // ?zoom=/?center= — a one-page-load framing override for the URL's own
+    // country, ahead of the dataset's viewOverrides table.
+    urlView,
+    urlHydrated,
+    hydrateCountry,
   }), [
     state, allFamilies, selectedState, jsonGridDomain, pinnedGridMax, uploadedData, massUnit,
     setActiveFamily, setActiveDataset, setControl, setSelectedState,
-    setUploadedData, clearUploadedData,
+    setUploadedData, clearUploadedData, url.fit, urlView, urlHydrated, hydrateCountry,
   ]);
 
   return (

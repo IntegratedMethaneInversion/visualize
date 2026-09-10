@@ -1,5 +1,6 @@
 import { registerDataset }         from '../../datasetRegistry';
 import { fetchCSV, parseNumber }   from '../../../utils/emissionsUtils';
+import { COUNTRY_VIEWS }           from './countryViews';
 
 const YEAR = 2023; // only year available for this dataset
 
@@ -99,7 +100,11 @@ function sumColumns(raw, prefixes, suffix) {
 // used to cover (Bahamas, Falkland Is., North Cyprus, Solomon Is.,
 // Timor-Leste) aren't in the current data file at all, so their entries were
 // dead weight.
-const ADMIN_ALIASES = {
+//
+// Exported (and reachable off the registered config as `nameAliases`) because
+// the ?country= URL param accepts either spelling and normalises to the ADMIN
+// name before selecting — see utils/urlParams.js's resolveFeatureName.
+export const ADMIN_ALIASES = {
   'Congo': 'Republic of the Congo',
 };
 
@@ -113,6 +118,8 @@ registerDataset({
 
   reloadTrigger: [],       // load all data once on dataset mount
   gridType: 'country-mask', // signals MapView to overlay a per-country masked grid on click
+  nameAliases:  ADMIN_ALIASES, // alternative spellings the ?country= param accepts
+  viewOverrides: COUNTRY_VIEWS, // per-country framing, where the automatic fit is wrong
 
   mapConfig: {
     initialViewState: { latitude: 20, longitude: 10, zoom: 2 },

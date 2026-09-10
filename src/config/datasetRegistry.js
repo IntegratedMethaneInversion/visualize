@@ -16,6 +16,12 @@ export function getDataset(id) {
   return registry.get(id);
 }
 
+/** Non-throwing existence check — for validating externally supplied ids
+ *  (e.g. the ?dataset= URL param) before committing to one. */
+export function hasDataset(id) {
+  return registry.has(id);
+}
+
 export function getAllDatasets() {
   return [...registry.values()];
 }

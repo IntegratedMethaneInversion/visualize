@@ -31,6 +31,7 @@ import {
   hasUncertainty,
 } from '../utils/emissionsUtils';
 import { rasterMax } from '../utils/gridStats';
+import { boundsOf, applyRegionView, FIT_MAX_ZOOM } from '../utils/mapFraming';
 
 // ─── Color utilities ──────────────────────────────────────────────────────────
 
@@ -173,6 +174,132 @@ function MapController({ mapConfig }) {
     if (maxZoom != null) map.setMaxZoom(maxZoom);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, boundsKey]);
+
+  return null;
+}
+
+// ─── FitToSelection (?fit=1) ──────────────────────────────────────────────────
+// Selecting a country normally only restyles it — the viewport stays wherever
+// MapController last put it, which for ch4-global is the whole world. That
+// makes a useless factsheet image, so ?fit=1 frames the selection instead.
+//
+// Rendered after MapController so its mount effect runs after that component's
+// setView, and only while ?fit=1 is set, so default behaviour is untouched.
+// animate:false throughout — an in-flight pan is a race with the screenshot.
+//
+// Where the resulting frame is wrong, applyRegionView takes an override: see
+// config/datasets/ch4/countryViews.js. This component publishes the settled
+// view as window.__imiView and logs a ready-to-paste entry for that table on
+// every settle, so a new override can be dialled in by panning the map rather
+// than guessing coordinates.
+
+function FitToSelection({ geojson, selectedState, override, urlView }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!geojson?.features?.length || !selectedState) return undefined;
+    const feature = geojson.features.find(f => getFeatureName(f) === selectedState);
+    if (!feature) return undefined;
+
+    try {
+      applyRegionView(map, {
+        bounds:  boundsOf(feature),
+        override,
+        urlView,
+        maxZoom: FIT_MAX_ZOOM,
+        animate: false,
+      });
+    } catch (err) {
+      console.error('[FitToSelection]', err.message);
+    }
+
+    const report = () => {
+      const c = map.getCenter();
+      const view = {
+        country: selectedState,
+        center:  [Number(c.lat.toFixed(2)), Number(c.lng.toFixed(2))],
+        zoom:    Number(map.getZoom().toFixed(2)),
+      };
+      window.__imiView = view;
+      console.info(
+        `[fit] '${selectedState}': { center: [${view.center[0]}, ${view.center[1]}], zoom: ${view.zoom} },`
+        + '  ← paste into src/config/datasets/ch4/countryViews.js',
+      );
+    };
+
+    report();
+    map.on('moveend zoomend', report);
+    return () => { map.off('moveend zoomend', report); };
+  }, [map, geojson, selectedState, override, urlView]);
+
+  return null;
+}
+
+// ─── ReadinessFlag ────────────────────────────────────────────────────────────
+// window.__imiReady / <body data-imi-ready> tell the factsheet screenshot
+// script when the view has actually settled, so it doesn't have to guess with
+// fixed sleeps. Deliberately conservative: the flag clears on every dataset,
+// control or selection change and only re-arms once
+//   * the dataset's dataLoader has resolved,
+//   * the URL's initial state has been applied,
+//   * any per-country grid has finished loading,
+//   * the map has stopped moving, and
+//   * one frame has been painted (Leaflet layers and the Recharts SVG are
+//     drawn by then, not merely mounted).
+
+// Grace period after the last moveend, so a fitBounds that is about to be
+// issued in a following effect isn't mistaken for a settled map.
+const MAP_IDLE_MS = 150;
+
+function setReadyFlag(ready) {
+  if (typeof window === 'undefined') return;
+  window.__imiReady = ready;
+  if (ready) document.body.dataset.imiReady = 'true';
+  else       delete document.body.dataset.imiReady;
+}
+
+function ReadinessFlag({ loading, error, gridLoading }) {
+  const map = useMap();
+  const { activeDataset, controls, selectedState, urlHydrated } = useDatasetContext();
+
+  const dataSettled = !loading && error == null && urlHydrated && !gridLoading;
+  // Controls are a fresh object on every change, so serialise for a dep that
+  // compares by value rather than re-running this on every render.
+  const controlsKey = JSON.stringify(controls);
+
+  useEffect(() => {
+    setReadyFlag(false);
+    if (!dataSettled) return undefined;
+
+    let cancelled = false;
+    let idleTimer = null;
+    let rafId     = null;
+
+    const arm = () => {
+      clearTimeout(idleTimer);
+      if (rafId != null) cancelAnimationFrame(rafId);
+      idleTimer = setTimeout(() => {
+        // Still moving: the moveend that ends this pan will re-arm.
+        if (cancelled || map._moving || map._animatingZoom) return;
+        rafId = requestAnimationFrame(() => { if (!cancelled) setReadyFlag(true); });
+      }, MAP_IDLE_MS);
+    };
+
+    const disarm = () => { setReadyFlag(false); arm(); };
+
+    map.on('movestart zoomstart', disarm);
+    map.on('moveend zoomend',     arm);
+    arm();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(idleTimer);
+      if (rafId != null) cancelAnimationFrame(rafId);
+      map.off('movestart zoomstart', disarm);
+      map.off('moveend zoomend',     arm);
+      setReadyFlag(false);
+    };
+  }, [map, dataSettled, activeDataset.id, controlsKey, selectedState]);
 
   return null;
 }
@@ -791,7 +918,10 @@ function domainMaxFor(features, propertyKeys) {
 
 function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomainReady, onLoadingChange }) {
   const map = useMap();
-  const { controls } = useDatasetContext();
+  const {
+    controls, fitToSelection, urlView, selectedState, activeDataset,
+  } = useDatasetContext();
+  const viewOverrides = activeDataset.viewOverrides;
   const { convert, label: units } = useDisplayUnit();
   const ensembleMinMax = useGlobalEnsembleMinMax();
   const layerRef = useRef(null);
@@ -868,8 +998,20 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
         });
 
         try {
-          const bounds = layer.getBounds();
-          if (bounds.isValid()) map.fitBounds(bounds, { animate: true, duration: 0.5 });
+          // Measured off the raw GeoJSON rather than layer.getBounds() so the
+          // grid's own antimeridian handling matches the country polygon's,
+          // and so the same per-country overrides apply — a country framed by
+          // hand shouldn't be re-framed by its grid a moment later. Under
+          // ?fit=1 FitToSelection has already placed the view; this repeats it
+          // without animation, or the screenshot catches the map mid-flight.
+          applyRegionView(map, {
+            bounds:   boundsOf(data),
+            override: viewOverrides?.[selectedState],
+            urlView:  fitToSelection ? urlView : null,
+            maxZoom:  fitToSelection ? FIT_MAX_ZOOM : null,
+            animate:  !fitToSelection,
+            duration: 0.5,
+          });
         } catch (_) {}
 
         layer.addTo(map);
@@ -1115,6 +1257,9 @@ export function MapView() {
     pinnedGridMax,
     setPinnedGridMax,
     uploadedData,
+    fitToSelection,
+    urlView,
+    hydrateCountry,
   } = useDatasetContext();
 
   const { data: baseData, loading, error } = useEmissionData();
@@ -1150,6 +1295,20 @@ export function MapView() {
     if (activeDataset.gridType === 'country-mask') return;
     setJsonGridDomain(null);
   }, [activeDataset.id, activeDataset.gridType, controls.sector, controls.year, setJsonGridDomain]);
+
+  // ── ?country= hydration ───────────────────────────────────────────────────
+  // selectedState holds the GeoJSON's own feature name, so the URL's spelling
+  // can only be normalised once those features are in hand. hydrateCountry
+  // applies at most once per page load; a load failure still releases the
+  // readiness gate rather than leaving it stuck.
+  useEffect(() => {
+    const features = baseData?.statesGeoJSON?.features;
+    if (!features) {
+      if (error) hydrateCountry([], null);
+      return;
+    }
+    hydrateCountry(features.map(getFeatureName), activeDataset.nameAliases);
+  }, [baseData, error, activeDataset.nameAliases, hydrateCountry]);
 
   const isPeriodGrid = activeDataset.gridType === 'period';
 
@@ -1329,6 +1488,16 @@ export function MapView() {
         {/* Keeps view, bounds and zoom limits in sync after dataset switches */}
         <MapController mapConfig={mapConfig} />
 
+        {/* ?fit=1 — frames the selected country, after MapController's setView */}
+        {fitToSelection && baseData?.statesGeoJSON && (
+          <FitToSelection
+            geojson={baseData.statesGeoJSON}
+            selectedState={selectedState}
+            override={activeDataset.viewOverrides?.[selectedState]}
+            urlView={urlView}
+          />
+        )}
+
         {/* Creates its own labelPane and keeps place names above the data */}
         <VectorBasemap />
 
@@ -1475,6 +1644,10 @@ export function MapView() {
             onStateClick={handleStateClick}
           />
         )}
+
+        {/* Last child, so its effect runs after every other layer's — tells the
+            factsheet screenshot script when the view has settled */}
+        <ReadinessFlag loading={loading} error={error} gridLoading={countryGridLoading} />
       </MapContainer>
     </div>
   );
