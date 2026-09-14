@@ -4,11 +4,11 @@ const GRAMS_PER_UNIT = {
   Tg:   1e12,
   Gg:   1e9,
   Tons: 1e6, // metric ton = 1 Mg
-  "Tons CO₂e(20yr)": 1e6*82.5, // 20yr GWP = 82.5 from IPCC AR6
-  "Tons CO₂e(100yr)": 1e6*29.8, // 100yr GWP = 29.8 from IPCC AR6
+  "20-year GWP (tons)": 1e6*82.5, // 20yr GWP = 82.5 from IPCC AR6
+  "100-year GWP (tons)": 1e6*29.8, // 100yr GWP = 29.8 from IPCC AR6
 };
 
-export const MASS_UNITS = ['Tg', 'Gg', 'Tons', "Tons CO₂e(20yr)", "Tons CO₂e(100yr)"];
+export const MASS_UNITS = ['Tg', 'Gg', 'Tons', "20-year GWP (tons)", "100-year GWP (tons)"];
 
 // Splits a display unit string like 'Tg/yr' or 'Gg/week' into its mass
 // prefix and time suffix. massUnit is null when the string doesn't start
