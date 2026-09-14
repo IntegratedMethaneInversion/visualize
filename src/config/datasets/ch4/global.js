@@ -36,7 +36,9 @@ const CSV_URL = 'data/ch4_global/website_data_withranges_withnatural.csv';
 // deltas that are genuinely narrower than the sum of their components'
 // (China: AnthroTotal_post_min 9.44 vs 10.42 for its seven sectors). So an
 // aggregate must read its own delta column wherever the file provides one,
-// never the sum of its parts'.
+// never the sum of its parts'. No sector currently needs it — `AnthroTotal` is
+// read whole rather than assembled — but the mechanism stays for the next
+// aggregate that does.
 // `includes` lists an aggregate's constituent sub-sectors, in the wording the
 // Sector Breakdown tooltip shows. Only set where the composition is actually
 // knowable from the source data: `Other` is a leaf column in every file we
@@ -44,18 +46,17 @@ const CSV_URL = 'data/ch4_global/website_data_withranges_withnatural.csv';
 const SECTORS = [
   { key: 'Total',       label: 'Total (all sources)', csv: 'Total',                        group: 'total',
     includes: ['every anthropogenic and natural sector below', 'excludes soil absorption'] },
-  // Value includes biomass burning — the file's `AnthroTotal` leaves it in the
-  // natural residual, but the gridded product has always counted it as
-  // anthropogenic (see each country_sectors/*.json's metadata.aggregates), and
-  // this dashboard follows the grid. The *delta* stays `AnthroTotal`'s alone:
-  // there's no propagated eight-sector column in the file, and adding biomass
-  // burning's delta on top would contradict the propagation the rest of the
-  // column does. Biomass burning is ~15 of ~390 Tg/yr globally, so this
-  // understates the total's spread slightly rather than inflating it.
-  { key: 'TotalAnth',   label: 'Total anthropogenic', csv: ['AnthroTotal', 'BiomassBurn'],
-                                                      unc: 'AnthroTotal',                  group: 'total',
+  // Biomass burning is *not* in here: it's grouped with the natural sources
+  // below. That matches the file exactly — `AnthroTotal` is the sum of the
+  // seven anthropogenic columns to the digit, so this reads both the value and
+  // the propagated `_post_min`/`_post_max` deltas straight off one column with
+  // no approximation. (The gridded products still count biomass burning as
+  // anthropogenic in their precomputed `TotalAnth`, so MapView re-sums the
+  // per-cell components instead of reading that aggregate — see
+  // TOTAL_ANTH_SECTORS there.)
+  { key: 'TotalAnth',   label: 'Total anthropogenic', csv: 'AnthroTotal',                  group: 'total',
     includes: ['livestock', 'oil & gas', 'coal', 'rice', 'waste', 'reservoirs',
-               'biomass burning', 'other anthropogenic'] },
+               'other anthropogenic'] },
   { key: 'Livestock',   label: 'Livestock',           csv: 'Livestock',                    group: 'anthro'  },
   { key: 'OilAndGas',   label: 'Oil & gas',           csv: 'Oil-Gas',                      group: 'anthro'  },
   { key: 'Coal',        label: 'Coal',                csv: 'Coal',                         group: 'anthro'  },
@@ -63,19 +64,53 @@ const SECTORS = [
   { key: 'Waste',       label: 'Waste',               csv: 'Waste',                        group: 'anthro',
     includes: ['landfills', 'wastewater'] },
   { key: 'Reservoirs',  label: 'Reservoirs',          csv: 'Reservoirs',                   group: 'anthro'  },
-  { key: 'BiomassBurn', label: 'Biomass burning',     csv: 'BiomassBurn',                  group: 'anthro'  },
   { key: 'OtherAnth',   label: 'Other anthropogenic', csv: 'Other',                        group: 'anthro'  },
   { key: 'Wetlands',    label: 'Wetlands',            csv: 'Wetlands',                     group: 'natural' },
-  // Termites + seeps. Unlike the two totals above there's no propagated
-  // combined delta in the file, so this one does sum its components' — a
-  // worst-case widening, but seeps are tiny next to termites (2 vs 18 Tg/yr
-  // globally) so the overlap it ignores is small.
-  { key: 'Natural',     label: 'Other Natural',       csv: ['Termites', 'Seeps'],          group: 'natural',
-    includes: ['termites', 'seeps'] },
+  // Selectable in its own right *and* counted inside `Natural` below, so these
+  // two bars overlap — the only pair in this table that does. Both are wanted:
+  // biomass burning is big enough to map on its own (~15 Tg/yr globally) but
+  // too small to warrant a third top-level category next to anthropogenic and
+  // natural.
+  { key: 'BiomassBurn', label: 'Biomass burning',     csv: 'BiomassBurn',                  group: 'natural' },
+  // Termites + seeps + biomass burning. Unlike `Total` and `TotalAnth` there's
+  // no propagated combined delta in the file, so this one sums its components'
+  // — a worst-case widening (assumes all three err the same direction at
+  // once). Summed world deltas run -14.1/+5.3 against a 37.2 Tg/yr central
+  // value, so the overlap it ignores is no longer negligible the way it was
+  // with termites and seeps alone; read this bar's whiskers as an outer bound.
+  { key: 'Natural',     label: 'Other Natural',       csv: ['Termites', 'Seeps', 'BiomassBurn'],
+                                                                                           group: 'natural',
+    includes: ['termites', 'seeps', 'biomass burning'] },
 ];
 
 const SECTOR_KEYS = SECTORS.map(s => s.key);
 const SECTOR_OPTIONS = SECTORS.map(({ key, label }) => ({ value: key, label }));
+
+// ─── TEMPORARY (added 2026-09-14) ────────────────────────────────────────────
+// Hides the natural-source bars — Wetlands, Biomass burning, Other Natural —
+// from the Sector Breakdown chart, leaving Total, Total anthropogenic and the
+// seven anthropogenic sectors. Added for an external screenshot script that
+// builds anthropogenic-only info documents.
+//
+// TO REVERT: set this to false. That is the whole change — everything below
+// keys off it, and nothing else in the app was touched.
+//
+// Deliberately scoped to the *chart* only: the map's Sector dropdown, the
+// choropleth, the grid overlay and the 2x2 totals table all still carry the
+// natural sectors, and every sector's numbers are still loaded. So this hides
+// bars, it does not re-scope the dataset, and `Total` still means "all
+// sources" — its bar stays taller than the anthropogenic bars it now sits
+// next to, by the 225 Tg/yr of wetlands + other natural no longer drawn.
+const ANTHRO_ONLY_BARS = true;
+
+const BAR_SECTORS = SECTORS
+  .filter(s => !ANTHRO_ONLY_BARS || s.group !== 'natural')
+  .map(({ key, label, includes }) => ({ key, label, includes }));
+
+// 12 bars x 2 series needs more vertical room than the 8-sector CONUS chart
+// the component defaults to; the 9-bar anthropogenic-only view does not, and
+// keeping 620 there would just stretch the bars.
+const BAR_CHART_HEIGHT = ANTHRO_ONLY_BARS ? 500 : 620;
 
 const asArray = v => (Array.isArray(v) ? v : [v]);
 
@@ -181,11 +216,12 @@ registerDataset({
     totalsLabels: { bottomUp: 'Bottom-up', posterior: 'IMI Best Estimate' }, // column headers on the DataTotals table
     // Order, labels and sub-sector lists for the Sector Breakdown bar chart,
     // straight off SECTORS so the bars and the Sector dropdown can never drift
-    // apart on wording or arithmetic.
-    barSectors: SECTORS.map(({ key, label, includes }) => ({ key, label, includes })),
-    // 12 bars x 2 series needs more vertical room and wider tick labels than
-    // the 8-sector CONUS chart these default to.
-    barChartHeight: 620,
+    // apart on wording or arithmetic — subject to the temporary
+    // ANTHRO_ONLY_BARS filter above, which drops rows but never rewords them.
+    barSectors:     BAR_SECTORS,
+    barChartHeight: BAR_CHART_HEIGHT,
+    // Wider tick labels than the CONUS chart this defaults to: 'Other
+    // anthropogenic' and 'Total (all sources)' both need the room.
     barLabelWidth:  150,
     colorScale: {
       stops: [

@@ -436,15 +436,16 @@ function useJsonGridMax(url) {
 //
 // TotalAnth, Natural and Waste aren't native ensemble variables, so their
 // spread is approximated by summing the constituent sectors' min/max
-// element-wise — the same aggregation rule the per-country data files use for
-// the central value (see build_country_sector_grids.py's `aggregates`), just
-// applied to the bounds instead of the estimate. Summing independent bounds
-// like this is a worst-case approximation (assumes every sector errs the same
-// direction at once), not a statistically rigorous propagation — reasonable
-// for a hover tooltip, but worth knowing if this number is ever used for
-// anything more rigorous. `Total` needs no such approximation: the file ships
-// a native Total_Excl_Soil, which is exactly the country CSV's `Total`
-// definition (anthropogenic + wetlands + termites + seeps, soil excluded).
+// element-wise — the same composition the central value uses (see
+// TOTAL_ANTH_SECTORS / NATURAL_SECTORS / WASTE_SECTORS below), just applied to
+// the bounds instead of the estimate. Summing independent bounds like this is
+// a worst-case approximation (assumes every sector errs the same direction at
+// once), not a statistically rigorous propagation — reasonable for a hover
+// tooltip, but worth knowing if this number is ever used for anything more
+// rigorous. `Total` needs no such approximation: the file ships a native
+// Total_Excl_Soil, which is exactly the country CSV's `Total` definition
+// (anthropogenic + wetlands + termites + seeps + biomass burning, soil
+// excluded).
 const ENSEMBLE_MINMAX_URL = `${import.meta.env.BASE_URL}data/ch4_global/ensemble_minmax.json.gz`;
 
 // Native ensemble variable name -> the Sector dropdown value it corresponds
@@ -467,10 +468,16 @@ const NATIVE_SECTOR_TO_CONTROL = {
 const COMPONENT_ONLY_SECTORS = ['Landfills', 'Wastewater', 'Termites', 'Seeps'];
 const NATIVE_SECTORS_NEEDED  = [...Object.keys(NATIVE_SECTOR_TO_CONTROL), ...COMPONENT_ONLY_SECTORS];
 
-// Mirrors build_country_sector_grids.py's `aggregates` (TotalAnth excludes
-// Wetlands but includes BiomassBurn, matching global.js's SECTORS).
-const TOTAL_ANTH_SECTORS = ['BiomassBurn', 'Coal', 'Landfills', 'Livestock', 'OG', 'OtherAnth', 'Rice', 'Wastewater', 'Reservoirs'];
-const NATURAL_SECTORS    = ['Termites', 'Seeps'];
+// The anthropogenic/natural split, in native grid spellings, matching
+// global.js's SECTORS: biomass burning counts as natural, alongside termites
+// and seeps. This deliberately no longer mirrors build_country_sector_grids.py's
+// `aggregates`, which still files BiomassBurn under TotalAnth — the precomputed
+// per-cell `emissions_TotalAnth_*`/`emissions_Natural_*` properties therefore
+// disagree with these lists and must not be read directly (see
+// CONTROL_SECTOR_TO_FILE_KEYS below). Regenerating those files with biomass
+// burning moved would let both go back to reading one property per cell.
+const TOTAL_ANTH_SECTORS = ['Coal', 'Landfills', 'Livestock', 'OG', 'OtherAnth', 'Rice', 'Wastewater', 'Reservoirs'];
+const NATURAL_SECTORS    = ['Termites', 'Seeps', 'BiomassBurn'];
 // The country CSV only has landfills and wastewater merged, so the dropdown's
 // `Waste` is the aggregate — the gridded products keep them separate.
 const WASTE_SECTORS      = ['Landfills', 'Wastewater'];
@@ -884,13 +891,20 @@ function cellBBox(geometry) {
 
 // Sector dropdown value -> the country_sectors/*.json property key(s) holding
 // that sector's estimate; multiple keys are summed. Only OilAndGas/OG differs
-// in spelling. TotalAnth, Natural and Total are shipped precomputed under the
-// same rule the ensemble aggregation above mirrors, so they need no summing.
-// `Waste` is the one real aggregate here: these grids keep landfills and
+// in spelling.
+//
+// TotalAnth and Natural are summed from their components rather than read off
+// the precomputed `emissions_TotalAnth_*`/`emissions_Natural_*` properties,
+// because those still count biomass burning as anthropogenic — see
+// TOTAL_ANTH_SECTORS above. `Total` needs no entry: it's precomputed and its
+// definition is unaffected by which side of the split biomass burning sits on.
+// `Waste` is summed for a different reason: these grids keep landfills and
 // wastewater separate, while the country CSV only has them merged.
 const CONTROL_SECTOR_TO_FILE_KEYS = {
   OilAndGas: ['OG'],
   Waste:     WASTE_SECTORS,
+  TotalAnth: TOTAL_ANTH_SECTORS,
+  Natural:   NATURAL_SECTORS,
 };
 
 function emissionsPropertyKeys(sector, satellite) {
