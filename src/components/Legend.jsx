@@ -3,6 +3,8 @@ import { useDatasetContext }       from '../context/DatasetContext';
 import { useEmissionData }         from '../hooks/useEmissionData';
 import { getGlobalDomain, getPeriodGlobalDomain } from '../utils/manifestUtils';
 import { computeChoroplethDomain } from '../utils/emissionsUtils';
+import { useDisplayUnit }          from '../hooks/useDisplayUnit';
+import { formatAxisValue }         from '../utils/units';
 
 function buildGradient(stops) {
   if (!stops?.length) return 'none';
@@ -79,17 +81,20 @@ export function Legend() {
   ]);
 
   const domain = isGrid ? rasterDomain : choroplethDomain;
-  const units  = isUpload
+  // The unit the domain's numbers are actually in, before the selector is
+  // applied: legendUnits for grids (the raster's own units), display.units
+  // for the choropleth (whose values are the same totals DataTotals shows).
+  const nativeUnits = isUpload
     ? (uploadedData?.meta?.units || (display.legendUnits ?? display.units))
     : (isGrid ? (display.legendUnits ?? display.units) : display.units);
+  const { label: units, convert } = useDisplayUnit(nativeUnits);
   const legendTitle = isUpload
     ? (uploadedData?.meta?.name || display.legendTitle)
     : display.legendTitle;
 
-  function fmt(v) {
-    if (v == null) return '';
-    return Math.abs(v) < 1 ? v.toFixed(2) : v.toFixed(1);
-  }
+  // Same compact formatting the chart axes use — these two ticks sit under a
+  // ~200px gradient, and a Tons-scale max is 6+ digits.
+  const fmt = v => (v == null ? '' : formatAxisValue(convert(v)));
 
   return (
     <div className="legend">

@@ -181,7 +181,7 @@ export function DatasetProvider({ initialFamilyId, initialDatasetId, children })
   // per-dataset control, so it persists as the user switches datasets.
   // Datasets whose display.units isn't a recognized mass unit (e.g. CO2's
   // ppm) ignore it; see useDisplayUnit.
-  const [massUnit, setMassUnit] = useState('Tg');
+  const [massUnit, setMassUnit] = useState('Tons');
 
   const setSelectedState = useCallback((stateName) => {
     setSelectedStateRaw(stateName);

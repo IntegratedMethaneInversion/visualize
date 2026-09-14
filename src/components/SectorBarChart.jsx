@@ -13,6 +13,7 @@ import {
 import { useDatasetContext }        from '../context/DatasetContext';
 import { useEmissionData }          from '../hooks/useEmissionData';
 import { useDisplayUnit }           from '../hooks/useDisplayUnit';
+import { formatMassValue, formatAxisValue } from '../utils/units';
 import {
   buildBarData,
   buildBottomUpBarData,
@@ -112,7 +113,7 @@ function UploadBarTooltip({ active, payload, label, units, accent }) {
       <div style={{ color: BRIGHT_COLOR, display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
         <span>Total</span>
         <span style={{ fontWeight: 600 }}>
-          {val != null ? Number(val).toFixed(3) : 'N/A'}
+          {val != null ? formatMassValue(val) : 'N/A'}
           {units && (
             <span style={{ opacity: 0.6, fontSize: '0.68rem', marginLeft: '0.2rem' }}>
               {units}
@@ -186,10 +187,10 @@ function SectorBarCustomTooltip({
         >
           <span>{row.name}</span>
           <span style={{ fontWeight: row.weight }}>
-            {row.value != null ? Number(row.value).toFixed(3) : 'N/A'}
+            {row.value != null ? formatMassValue(row.value) : 'N/A'}
             {row.spread != null && (
               <span style={{ color: DIM_COLOR, fontWeight: 400, fontSize: '0.75rem' }}>
-                {' ± '}{Number(row.spread).toFixed(3)}
+                {' ± '}{formatMassValue(row.spread)}
               </span>
             )}
             {units && (
@@ -249,6 +250,7 @@ function SectorBarChartBody({
           tick={{ fill: '#94a3b8', fontSize: 13 }}
           axisLine={{ stroke: '#2d3148' }}
           tickLine={false}
+          tickFormatter={formatAxisValue}
         />
         <YAxis
           type="category"
@@ -337,6 +339,7 @@ export function SectorBarChart() {
               tick={{ fill: '#94a3b8', fontSize: 13 }}
               axisLine={{ stroke: '#2d3148' }}
               tickLine={false}
+              tickFormatter={formatAxisValue}
             />
             <YAxis
               type="category"

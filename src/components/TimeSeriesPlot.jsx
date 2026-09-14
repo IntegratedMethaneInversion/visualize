@@ -13,6 +13,7 @@ import {
 import { useDatasetContext }        from '../context/DatasetContext';
 import { useEmissionData }          from '../hooks/useEmissionData';
 import { useDisplayUnit }           from '../hooks/useDisplayUnit';
+import { formatMassValue, formatAxisValue } from '../utils/units';
 import {
   buildLineData,
   buildBottomUpLineData,
@@ -36,7 +37,7 @@ const KG_TO_GG = 1e6;
 // rather than a wrapping component.
 const GRID_STYLE      = { strokeDasharray: '3 3', stroke: 'rgba(255,255,255,0.06)' };
 const AXIS_TICK_STYLE = { tick: { fill: '#94a3b8', fontSize: 13 }, axisLine: { stroke: '#2d3148' }, tickLine: false };
-const Y_AXIS_STYLE    = { ...AXIS_TICK_STYLE, width: 52 };
+const Y_AXIS_STYLE    = { ...AXIS_TICK_STYLE, width: 52, tickFormatter: formatAxisValue };
 
 function cursorStyle(accent) {
   return { stroke: accent, strokeOpacity: 0.4, strokeWidth: 1, strokeDasharray: '4 4' };
@@ -82,10 +83,10 @@ function TimeSeriesCustomTooltip({ active, payload, label, units, accent }) {
         >
           <span>{row.name}</span>
           <span style={{ fontWeight: row.weight }}>
-            {row.value != null ? Number(row.value).toFixed(3) : 'N/A'}
+            {row.value != null ? formatMassValue(row.value) : 'N/A'}
             {row.spread != null && (
               <span style={{ color: DIM_COLOR, fontWeight: 400, fontSize: '0.75rem' }}>
-                {' ± '}{Number(row.spread).toFixed(3)}
+                {' ± '}{formatMassValue(row.spread)}
               </span>
             )}
             {units && (
