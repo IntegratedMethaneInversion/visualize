@@ -13,7 +13,7 @@ import {
 import { useDatasetContext }        from '../context/DatasetContext';
 import { useEmissionData }          from '../hooks/useEmissionData';
 import { useDisplayUnit }           from '../hooks/useDisplayUnit';
-import { formatMassValue, formatAxisValue } from '../utils/units';
+import { formatMassValue, formatAxisValue, formatRange } from '../utils/units';
 import {
   buildLineData,
   buildBottomUpLineData,
@@ -50,16 +50,15 @@ function TimeSeriesCustomTooltip({ active, payload, label, units, accent }) {
   const byKey = Object.fromEntries(payload.map(p => [p.dataKey, p]));
   const val   = byKey.value?.value;
 
-  // Same +/- convention as the map's grid-cell hover tooltip: the larger of
-  // the two (possibly asymmetric) deltas around the central value, collapsed
-  // to a single figure, rather than separate upper/lower bound rows.
-  const spread = (byKey.min && byKey.max && val != null)
-    ? Math.max(0, val - byKey.min.value, byKey.max.value - val)
+  // Same "(min, max)" convention as the map's hover tooltips and the sector
+  // chart — null here when this point has no ensemble range.
+  const range = val != null
+    ? formatRange(byKey.min?.value, byKey.max?.value)
     : null;
 
   const rows = [];
   if (byKey.value)
-    rows.push({ name: 'IMI Best Estimate', value: val, spread, color: BRIGHT_COLOR, weight: 600 });
+    rows.push({ name: 'IMI Best Estimate', value: val, range, color: BRIGHT_COLOR, weight: 600 });
   if (byKey.bottomUp && byKey.bottomUp.value != null)
     rows.push({ name: 'Bottom-up',   value: byKey.bottomUp.value, color: TEAL_COLOR,  weight: 600 });
 
@@ -84,9 +83,9 @@ function TimeSeriesCustomTooltip({ active, payload, label, units, accent }) {
           <span>{row.name}</span>
           <span style={{ fontWeight: row.weight }}>
             {row.value != null ? formatMassValue(row.value) : 'N/A'}
-            {row.spread != null && (
+            {row.range && (
               <span style={{ color: DIM_COLOR, fontWeight: 400, fontSize: '0.75rem' }}>
-                {' ± '}{formatMassValue(row.spread)}
+                {' '}{row.range}
               </span>
             )}
             {units && (

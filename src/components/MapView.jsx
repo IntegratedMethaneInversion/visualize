@@ -16,7 +16,7 @@ import { VectorBasemap }     from './VectorBasemap';
 import { useDatasetContext } from '../context/DatasetContext';
 import { useEmissionData }   from '../hooks/useEmissionData';
 import { useDisplayUnit }    from '../hooks/useDisplayUnit';
-import { formatMassValue, convertMass } from '../utils/units';
+import { formatMassValue, convertMass, formatRange, boundsFromDeltas } from '../utils/units';
 import {
   getManifestEntry,
   getGlobalDomain,
@@ -310,6 +310,11 @@ function ReadinessFlag({ loading, error, gridLoading }) {
 // kg/km²/hr, so convert on read (1 km² = 1000² m², 1 hr = 3600 s).
 const KG_M2_S_TO_KG_KM2_HR = (1000 ** 2) * 60 * 60;
 
+// The raw-raster hover tooltips print flux densities rather than unit-selected
+// masses, so their range bounds match the central value's fixed 3 decimals
+// instead of going through formatMassValue.
+const FLUX_FORMAT = v => v.toFixed(3);
+
 function GridHoverLayer({ georaster, minGeoraster, maxGeoraster, units }) {
   const map = useMap();
   const [hover, setHover] = useState(null);
@@ -333,10 +338,9 @@ function GridHoverLayer({ georaster, minGeoraster, maxGeoraster, units }) {
 
   // Ensemble min/max only exist for posterior data -- when either is
   // unavailable (e.g. GHGI-prior, or this cell has no ensemble coverage)
-  // the tooltip just falls back to showing the central value alone.
-  const spread = (hover.min != null && hover.max != null)
-    ? (hover.max - hover.min) / 2
-    : null;
+  // formatRange returns null and the tooltip falls back to the central
+  // value alone.
+  const range = formatRange(hover.min, hover.max, FLUX_FORMAT);
 
   return createPortal(
     <div
@@ -344,7 +348,7 @@ function GridHoverLayer({ georaster, minGeoraster, maxGeoraster, units }) {
       style={{ left: hover.point.x + 14, top: hover.point.y }}
     >
       {hover.value.toFixed(3)}
-      {spread != null && <span className="grid-hover-spread"> ± {spread.toFixed(3)}</span>}
+      {range && <span className="grid-hover-range"> {range}</span>}
       {units && <span className="grid-hover-units"> {units}</span>}
     </div>,
     map.getContainer(),
@@ -606,9 +610,7 @@ function JsonGridHoverLayer({
 
   // Ensemble min/max only exist for sectors/years with uncertainty coverage --
   // when either is unavailable the tooltip falls back to the central value alone.
-  const spread = (hover.min != null && hover.max != null)
-    ? (hover.max - hover.min) / 2
-    : null;
+  const range = formatRange(hover.min, hover.max, FLUX_FORMAT);
 
   return createPortal(
     <div
@@ -616,7 +618,7 @@ function JsonGridHoverLayer({
       style={{ left: hover.point.x + 14, top: hover.point.y }}
     >
       {hover.value.toFixed(3)}
-      {spread != null && <span className="grid-hover-spread"> ± {spread.toFixed(3)}</span>}
+      {range && <span className="grid-hover-range"> {range}</span>}
       {units && <span className="grid-hover-units"> {units}</span>}
     </div>,
     map.getContainer(),
@@ -1115,14 +1117,7 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
   if (!hover) return null;
 
   const value = convert(hover.value);
-  const min   = convert(hover.min);
-  const max   = convert(hover.max);
-  // Same ± convention as the sector chart's uncertainty, collapsed to a
-  // single figure: the larger of the two (possibly asymmetric) deltas
-  // around the central value, rather than their average.
-  const spread = (min != null && max != null)
-    ? Math.max(0, value - min, max - value)
-    : null;
+  const range = formatRange(convert(hover.min), convert(hover.max));
 
   return createPortal(
     <div
@@ -1130,7 +1125,7 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
       style={{ left: hover.point.x + 14, top: hover.point.y }}
     >
       {formatMassValue(value)}
-      {spread != null && <span className="grid-hover-spread"> ± {formatMassValue(spread)}</span>}
+      {range && <span className="grid-hover-range"> {range}</span>}
       {units && <span className="grid-hover-units"> {units}</span>}
     </div>,
     map.getContainer(),
@@ -1186,23 +1181,17 @@ function ChoroplethLayer({
       // Uncertainty, where the dataset supplies it, comes from the same
       // country/sector ranges the Sector Breakdown chart plots — and is
       // posterior-only. Those are +/- delta magnitudes rather than absolute
-      // bounds, and a delta can exceed its own central value, so the lower
-      // bound clamps at 0 exactly as buildRangesBarData does. Collapsed to a
-      // single +/- figure (the larger of the two deviations) to match the
-      // grid-cell tooltip and the bar chart's tooltip.
+      // bounds, so boundsFromDeltas turns them into the (min, max) pair every
+      // other tooltip displays.
       const entry = hasUncertainty(satellite)
         ? sectorRanges?.byCountry?.[name]?.[sector]
         : null;
-      let spread = null;
-      if (entry?.post != null && entry.minDelta != null && entry.maxDelta != null) {
-        const lower = Math.max(0, entry.post - entry.minDelta);
-        const upper = entry.post + entry.maxDelta;
-        spread = convert(Math.max(0, entry.post - lower, upper - entry.post));
-      }
+      const bounds = boundsFromDeltas(entry?.post, entry?.minDelta, entry?.maxDelta);
+      const range  = bounds ? formatRange(convert(bounds[0]), convert(bounds[1])) : null;
 
       layer.bindTooltip(
         `<strong>${name}</strong><br />${formatMassValue(val)}`
-        + (spread != null ? ` ± ${formatMassValue(spread)}` : '')
+        + (range ? ` <span class="choropleth-tooltip-range">${range}</span>` : '')
         + (units ? ` <span class="choropleth-tooltip-units">${units}</span>` : ''),
         { sticky: true },
       );

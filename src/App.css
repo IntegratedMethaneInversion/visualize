@@ -214,10 +214,18 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
   margin-left: .15rem;
 }
 
-.grid-hover-spread {
+.grid-hover-range {
   font-weight: 400;
   color:       var(--text-muted);
   font-size:   .7rem;
+}
+
+/* Uncertainty range inside the country choropleth's Leaflet tooltip —
+   .grid-hover-range's counterpart for the bindTooltip-built markup. */
+.choropleth-tooltip-range {
+  font-weight: 400;
+  opacity:     0.75;
+  font-size:   .9em;
 }
 
 /* Units suffix inside the country choropleth's Leaflet tooltip. Mirrors
@@ -422,7 +430,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
   font-weight:    600;
   text-transform: uppercase;
   letter-spacing: .08em;
-  color:          var(--text-muted);
+  color:          var(--text-primary);
 }
 
 .chart-year {
@@ -433,9 +441,11 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 }
 
 .chart-units {
-  font-size: .85rem;
-  color:     var(--text-muted);
-  opacity:   .7;
+  font-size: .90rem;
+  font-weight: 600;
+  color:     var(--text-primary);
+  opacity:   1;
+  text-transform: uppercase;
 }
 
 .chart-status {

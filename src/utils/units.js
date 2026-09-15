@@ -1,11 +1,17 @@
 // Linear mass-unit conversion for emissions totals. Grams-per-unit lets any
 // pair convert via a single multiply/divide instead of a conversion table.
+//
+// The CO2e units are the same linear scale seen from the other side: one ton
+// of CO2e stands for 1/GWP tons of CH4, so their grams-per-unit is DIVIDED
+// by the GWP. That makes convertMass multiply the CH4 mass by the GWP, which
+// is the direction the labels promise (374M tons CH4 -> 30.9B tons CO2e-20yr,
+// not 4.5M).
 const GRAMS_PER_UNIT = {
   Tg:   1e12,
   Gg:   1e9,
   Tons: 1e6, // metric ton = 1 Mg
-  "20-year GWP (tons)": 1e6*82.5, // 20yr GWP = 82.5 from IPCC AR6
-  "100-year GWP (tons)": 1e6*29.8, // 100yr GWP = 29.8 from IPCC AR6
+  "20-year GWP (tons)": 1e6/82.5, // 20yr GWP = 82.5 from IPCC AR6
+  "100-year GWP (tons)": 1e6/29.8, // 100yr GWP = 29.8 from IPCC AR6
 };
 
 export const MASS_UNITS = ['Tg', 'Gg', 'Tons', "20-year GWP (tons)", "100-year GWP (tons)"];
@@ -47,6 +53,30 @@ export function formatMassValue(v) {
   }
   if (abs > 0 && abs < 1) return v.toFixed(5);
   return v.toFixed(2);
+}
+
+// ─── Uncertainty range display ───────────────────────────────────────────────
+// Every uncertainty-carrying tooltip -- grid cells, the country choropleth,
+// the sector bars, the time series -- renders its ensemble range the same
+// way: the central value followed by "(min, max)". Centralized so the
+// convention, including bound ordering, changes in exactly one place.
+//
+// `format` formats the bounds themselves. It defaults to formatMassValue;
+// the raw-raster tooltips pass their own toFixed(3) because they show flux
+// densities rather than unit-converted masses.
+export function formatRange(min, max, format = formatMassValue) {
+  if (min == null || max == null) return null;
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  return `(${format(min)}, ${format(max)})`;
+}
+
+// The ranges CSVs give +/- delta magnitudes rather than absolute bounds, and
+// a delta can exceed its own central value -- so the lower bound clamps at 0,
+// exactly as buildRangesBarData does. Returns [min, max], or null when the
+// central value or either delta is missing.
+export function boundsFromDeltas(value, minDelta, maxDelta) {
+  if (value == null || minDelta == null || maxDelta == null) return null;
+  return [Math.max(0, value - minDelta), value + maxDelta];
 }
 
 // Axis-tick variant of the above. Ticks are auto-chosen round numbers laid

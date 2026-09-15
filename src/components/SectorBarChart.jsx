@@ -13,7 +13,7 @@ import {
 import { useDatasetContext }        from '../context/DatasetContext';
 import { useEmissionData }          from '../hooks/useEmissionData';
 import { useDisplayUnit }           from '../hooks/useDisplayUnit';
-import { formatMassValue, formatAxisValue } from '../utils/units';
+import { formatMassValue, formatAxisValue, formatRange } from '../utils/units';
 import {
   buildBarData,
   buildBottomUpBarData,
@@ -83,7 +83,7 @@ function SeriesLegend({ accent }) {
     <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#94a3b8' }}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
         <span style={swatch(accent)} />
-        IMI output
+        IMI Best Estimate
       </span>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
         <span style={swatch(TEAL_COLOR)} />
@@ -138,15 +138,14 @@ function SectorBarCustomTooltip({
   const buVal      = buEntry?.value;
   const includes   = postEntry?.payload?.includes;
 
-  // Same +/- convention as the map's grid-cell hover tooltip: the larger of
-  // the two (possibly asymmetric) deltas around the central value, collapsed
-  // to a single figure, rather than separate upper/lower bound rows.
-  const spread = (showUncertainty && errorRange && val != null)
-    ? Math.max(0, val - errorRange[0], errorRange[1] - val)
+  // Absolute bounds as "(min, max)" rather than a single collapsed +/-
+  // figure, since the range around the central value can be asymmetric.
+  const range = (showUncertainty && errorRange && val != null)
+    ? formatRange(errorRange[0], errorRange[1])
     : null;
 
   const rows = [
-    { name: 'IMI Best Estimate', value: val, spread, color: BRIGHT_COLOR, weight: 600 },
+    { name: 'IMI Best Estimate', value: val, range, color: BRIGHT_COLOR, weight: 600 },
   ];
   if (showBottomUp && buVal != null) {
     rows.push({ name: 'Bottom-up', value: buVal, color: TEAL_COLOR, weight: 600 });
@@ -161,7 +160,7 @@ function SectorBarCustomTooltip({
       fontSize:     '0.85rem',
       lineHeight:   1.65,
       minWidth:     '9rem',
-      maxWidth:     '17rem',
+      maxWidth:     '19rem',
     }}>
       <div style={{ color: accent, fontWeight: 700, marginBottom: '0.15rem' }}>
         {label}
@@ -183,21 +182,17 @@ function SectorBarCustomTooltip({
       {rows.map(row => (
         <div
           key={row.name}
-          style={{ color: row.color, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '1rem' }}
+          style={{ color: row.color, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.4rem' }}
         >
           <span>{row.name}</span>
           <span style={{ fontWeight: row.weight }}>
             {row.value != null ? formatMassValue(row.value) : 'N/A'}
-            {row.spread != null && (
+            {row.range && (
               <span style={{ color: DIM_COLOR, fontWeight: 400, fontSize: '0.75rem' }}>
-                {' ± '}{formatMassValue(row.spread)}
+                {' '}{row.range}
               </span>
             )}
-            {units && (
-              <span style={{ opacity: 0.6, fontSize: '0.68rem', marginLeft: '0.2rem' }}>
-                {units}
-              </span>
-            )}
+
           </span>
         </div>
       ))}
@@ -283,7 +278,7 @@ function SectorBarChartBody({
               dataKey="errorDelta"
               width={4}
               strokeWidth={1.5}
-              stroke="#94a3b8"
+              stroke="#e2e8f0"
               direction="x"
             />
           )}
