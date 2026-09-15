@@ -23,6 +23,8 @@ import {
   hasUncertainty,
 }                                  from '../utils/emissionsUtils';
 import { buildPeriodBarData }       from '../utils/manifestUtils';
+import { DownloadCSVButton }        from './DownloadCSVButton';
+import { slugify }                  from '../utils/csvExport';
 
 const DIM_COLOR    = '#99a7b9';
 const BRIGHT_COLOR = '#e2e8f0';
@@ -71,6 +73,41 @@ function buildSectorRows(resolvedSectors, data, bottomUpData, { showUncertainty,
       : null,
     bottomUpValue: showBottomUp ? convert(bottomUpData?.values[i] ?? null) : null,
   }));
+}
+
+// Flattens the chart's own rows into CSV rows/columns for the download
+// button. Exporting what's plotted (rather than re-deriving from the raw
+// bundles) keeps the file in step with the chart: same sector set, same
+// aggregation into barSectors buckets, same display units. Uncertainty and
+// bottom-up columns appear only when those series are on screen.
+function buildSectorCsv(chartData, { place, year, units, showUncertainty, showBottomUp }) {
+  const columns = [
+    ...(place != null ? [{ key: 'place',  header: 'place'  }] : []),
+    ...(year  != null ? [{ key: 'period', header: 'period' }] : []),
+    { key: 'sector', header: 'sector' },
+    { key: 'value',  header: `imi_best_estimate (${units})` },
+  ];
+  if (showUncertainty) {
+    columns.push(
+      { key: 'min', header: `min (${units})` },
+      { key: 'max', header: `max (${units})` },
+    );
+  }
+  if (showBottomUp) {
+    columns.push({ key: 'bottomUp', header: `bottom_up (${units})` });
+  }
+
+  const rows = chartData.map(row => ({
+    place,
+    period:   year,
+    sector:   row.sector,
+    value:    row.value,
+    min:      row.errorRange?.[0] ?? null,
+    max:      row.errorRange?.[1] ?? null,
+    bottomUp: row.bottomUpValue,
+  }));
+
+  return { rows, columns };
 }
 
 // Color key for charts that plot both series — swatch colors match the Bar
@@ -202,7 +239,7 @@ function SectorBarCustomTooltip({
 
 // Header row shared by the ch4-global and default branches: place/year/units
 // plus a loading indicator and the bottom-up legend when that series is shown.
-function SectorChartHeader({ place, year, units, loading, showBottomUp, accent }) {
+function SectorChartHeader({ place, year, units, loading, showBottomUp, accent, csv, csvFilename }) {
   return (
     <>
       <div className="chart-header">
@@ -211,6 +248,9 @@ function SectorChartHeader({ place, year, units, loading, showBottomUp, accent }
         <span className="chart-year">{year}</span>
         <span className="chart-units">{units}</span>
         {loading && <span className="chart-status">Loading…</span>}
+        {csv && (
+          <DownloadCSVButton rows={csv.rows} columns={csv.columns} filename={csvFilename} />
+        )}
       </div>
       {showBottomUp && <SeriesLegend accent={accent} />}
     </>
@@ -378,12 +418,25 @@ export function SectorBarChart() {
       bottomUpValue: prior.values[i] != null ? convert(prior.values[i] / KG_TO_GG) : null,
     }));
 
+    const csv = buildSectorCsv(chartData, {
+      place:           activeDataset.display?.defaultPlaceLabel ?? activeDataset.name,
+      year:            weekStart,
+      units:           displayUnits,
+      showUncertainty: false,
+      showBottomUp:    true,
+    });
+
     return (
       <div className="chart-panel">
         <div className="chart-header">
           <span className="chart-title">Sector Breakdown</span>
           <span className="chart-year">{weekStart}</span>
           <span className="chart-units">{displayUnits}</span>
+          <DownloadCSVButton
+            rows={csv.rows}
+            columns={csv.columns}
+            filename={`sector-emissions_${slugify(activeDataset.id)}_${slugify(weekStart)}.csv`}
+          />
         </div>
         <SeriesLegend accent={accent} />
 
@@ -420,6 +473,14 @@ export function SectorBarChart() {
     const resolvedSectors = resolveBarSectors(rangesData.labels, activeDataset.display?.barSectors);
     const chartData = buildSectorRows(resolvedSectors, rangesData, bottomUpData, { showUncertainty, showBottomUp, convert });
 
+    const csv = buildSectorCsv(chartData, {
+      place: placeLabel,
+      year:  controls.year,
+      units: displayUnits,
+      showUncertainty,
+      showBottomUp,
+    });
+
     return (
       <div className="chart-panel">
         <SectorChartHeader
@@ -429,6 +490,8 @@ export function SectorBarChart() {
           loading={loading}
           showBottomUp={showBottomUp}
           accent={accent}
+          csv={csv}
+          csvFilename={`sector-emissions_${slugify(placeLabel)}_${slugify(controls.year)}.csv`}
         />
 
         <SectorBarChartBody
@@ -471,6 +534,14 @@ export function SectorBarChart() {
   const resolvedSectors = resolveBarSectors(barData.labels, activeDataset.display?.barSectors);
   const chartData = buildSectorRows(resolvedSectors, barData, bottomUpData, { showUncertainty, showBottomUp, convert });
 
+  const csv = buildSectorCsv(chartData, {
+    place: placeLabel,
+    year:  controls.year,
+    units: displayUnits,
+    showUncertainty,
+    showBottomUp,
+  });
+
   return (
     <div className="chart-panel">
       <SectorChartHeader
@@ -480,6 +551,8 @@ export function SectorBarChart() {
         loading={loading}
         showBottomUp={showBottomUp}
         accent={accent}
+        csv={csv}
+        csvFilename={`sector-emissions_${slugify(placeLabel)}_${slugify(controls.year)}.csv`}
       />
 
       <SectorBarChartBody

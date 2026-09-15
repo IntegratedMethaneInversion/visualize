@@ -457,6 +457,36 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
   color: #fca5a5;
 }
 
+/* Deliberately quiet: the chart is the content, the export is a utility.
+   Borrows .chart-header's baseline so it doesn't add height to that row. */
+.chart-download-btn {
+  display:       inline-flex;
+  align-items:   center;
+  gap:           .25rem;
+  padding:       .15rem .4rem;
+  border:        1px solid var(--border);
+  border-radius: 4px;
+  background:    transparent;
+  color:         var(--text-muted);
+  font:          inherit;
+  font-size:     .68rem;
+  font-weight:   600;
+  letter-spacing: .04em;
+  cursor:        pointer;
+  transition:    color .12s, border-color .12s, background .12s;
+}
+
+.chart-download-btn:hover {
+  color:        var(--accent);
+  border-color: var(--accent);
+  background:   rgba(255, 255, 255, .04);
+}
+
+.chart-download-btn:focus-visible {
+  outline:        2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* ── Time series — now in sidebar, remove the border-top override ─────────────*/
 .timeseries-panel {
   border-top: 1px solid var(--border);
