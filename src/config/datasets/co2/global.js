@@ -3,7 +3,8 @@ import { registerDataset } from '../../datasetRegistry';
 registerDataset({
   id:     'co2-global',
   family: 'CO2',
-  name:   'Global',
+  name:         'Global',   // big title on the dashboard
+  dropdownName: 'Global',   // label in the Dataset dropdown
   description: 'Global column-averaged CO₂ concentrations from satellite observations.',
   satellites: ['OCO-2', 'OCO-3', 'GOSAT', 'GOSAT-2'],
 

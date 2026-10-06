@@ -6,19 +6,19 @@ export function DatasetSelector() {
 
   return (
     <div className="dataset-selector">
-      <span className="selector-label">Region</span>
-      <div className="selector-tabs">
+      <label className="selector-label" htmlFor="dataset-select">Dataset</label>
+      <select
+        id="dataset-select"
+        className="select-control dataset-select"
+        value={activeDataset.id}
+        onChange={e => setActiveDataset(e.target.value)}
+      >
         {datasetsInActiveFamily.map(ds => (
-          <button
-            key={ds.id}
-            className={`selector-tab ${ds.id === activeDataset.id ? 'active' : ''}`}
-            onClick={() => setActiveDataset(ds.id)}
-            title={ds.description}
-          >
-            {ds.name}
-          </button>
+          <option key={ds.id} value={ds.id} title={ds.description}>
+            {ds.dropdownName}
+          </option>
         ))}
-      </div>
+      </select>
     </div>
   );
 }

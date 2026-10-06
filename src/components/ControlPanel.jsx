@@ -1,6 +1,7 @@
 import React from 'react';
 import { useDatasetContext } from '../context/DatasetContext';
 import { useEmissionData }   from '../hooks/useEmissionData';
+import { SECTOR_CONTROL_KEY, resolveControlOptions } from '../utils/controls';
 
 const ControlRenderers = {
   slider:      SliderControl,
@@ -16,16 +17,11 @@ export function ControlPanel() {
   // Resolve visibility and options for every control up front
   const resolvedControls = activeDataset.controls
     .map(def => {
-      if (def.visible && !def.visible(controls, { selectedState })) return null;
-      const Renderer = ControlRenderers[def.type];
-      if (!Renderer) return null;
+      if (def.key === SECTOR_CONTROL_KEY) return null;
+      if (!ControlRenderers[def.type]) return null;
 
-      let options = def.options;
-      if (typeof options === 'function') options = options(controls);
-      if (def.getOptions) options = def.getOptions(baseData, { uploadedData });
-      if (!options || options.length === 0) return null;
-
-      return { ...def, options };
+      const options = resolveControlOptions(def, { controls, selectedState, baseData, uploadedData });
+      return options && { ...def, options };
     })
     .filter(Boolean);
 

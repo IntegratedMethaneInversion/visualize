@@ -146,7 +146,8 @@ export const ADMIN_ALIASES = {
 registerDataset({
   id:     'ch4-global',
   family: 'CH4',
-  name:   'Global',
+  name:         'Global',   // big title on the dashboard
+  dropdownName: 'Global - East et al., 2023',   // label in the Dataset dropdown
   description: 'Annual methane emissions by country at 25-km resolution generated with the IMI using TROPOMI satellite data combined with bottom-up information from national BTRs. See East et al. (2025) for details.',
   citation: { text: 'East et al. (2025)', url: 'https://www.nature.com/articles/s41467-025-67122-8' },
   satellites: ['TROPOMI'],

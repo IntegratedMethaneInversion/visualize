@@ -3,7 +3,8 @@ import { registerDataset } from '../../datasetRegistry';
 registerDataset({
   id:     'co2-conus',
   family: 'CO2',
-  name:   'Continental USA',
+  name:         'Continental USA',   // big title on the dashboard
+  dropdownName: 'Continental USA',   // label in the Dataset dropdown
   description: 'Column-averaged CO₂ concentrations over the continental United States.',
   satellites: ['OCO-2', 'OCO-3', 'GOSAT'],
 

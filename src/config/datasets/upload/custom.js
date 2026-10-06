@@ -3,7 +3,8 @@ import { registerDataset } from '../../datasetRegistry';
 registerDataset({
   id:       'user-upload',
   family:   'UPLOAD',
-  name:     'Your Data',
+  name:         'Your Data',   // big title on the dashboard
+  dropdownName: 'Your Data',   // label in the Dataset dropdown
   description: `Your files are not stored or cached anywhere, so browser refreshes or switching datasets will clear all inputs. Uploads are limited to ~300MB so as to not compromise browser performance. Shaded region/choropleth maps are not supported for user uploads.`,
 
   reloadTrigger: [],
