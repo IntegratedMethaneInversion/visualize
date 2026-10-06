@@ -21,7 +21,7 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.error) {
       return (
-        <div style={{ color: 'red', padding: '2rem', background: '#1a1a1a', fontFamily: 'monospace' }}>
+        <div style={{ color: '#b91c1c', padding: '2rem', background: '#fff', fontFamily: 'monospace' }}>
           <h2>Render Error</h2>
           <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>
             {this.state.error.message}

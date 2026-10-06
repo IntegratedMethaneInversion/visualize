@@ -23,9 +23,9 @@ import {
 }                                  from '../utils/emissionsUtils';
 import { buildPeriodLineData }      from '../utils/manifestUtils';
 
-const DIM_COLOR    = '#99a7b9';
-const BRIGHT_COLOR = '#e2e8f0';
-const TEAL_COLOR   = '#14b8a6';
+const DIM_COLOR    = '#64748b';
+const BRIGHT_COLOR = '#0f172a';
+const TEAL_COLOR   = '#0d9488';
 
 // Manifest total_kg values are in the tens-of-millions for a whole-basin
 // week; Gg (1e6 kg) keeps the axis/tooltip numbers readable.
@@ -35,8 +35,8 @@ const KG_TO_GG = 1e6;
 // CartesianGrid/XAxis/YAxis as direct children of the chart to auto-detect
 // them, so these are prop objects to spread onto each branch's own element
 // rather than a wrapping component.
-const GRID_STYLE      = { strokeDasharray: '3 3', stroke: 'rgba(255,255,255,0.06)' };
-const AXIS_TICK_STYLE = { tick: { fill: '#94a3b8', fontSize: 13 }, axisLine: { stroke: '#2d3148' }, tickLine: false };
+const GRID_STYLE      = { strokeDasharray: '3 3', stroke: 'rgba(15,23,42,0.08)' };
+const AXIS_TICK_STYLE = { tick: { fill: '#64748b', fontSize: 13 }, axisLine: { stroke: '#e2e8f0' }, tickLine: false };
 const Y_AXIS_STYLE    = { ...AXIS_TICK_STYLE, width: 52, tickFormatter: formatAxisValue };
 
 function cursorStyle(accent) {
@@ -53,7 +53,7 @@ function TimeSeriesCustomTooltip({ active, payload, label, units, accent }) {
   // Same "(min, max)" convention as the map's hover tooltips and the sector
   // chart — null here when this point has no ensemble range.
   const range = val != null
-    ? formatRange(byKey.min?.value, byKey.max?.value)
+    ? formatRange(byKey.band?.value?.[0], byKey.band?.value?.[1])
     : null;
 
   const rows = [];
@@ -64,8 +64,9 @@ function TimeSeriesCustomTooltip({ active, payload, label, units, accent }) {
 
   return (
     <div style={{
-      background:   '#1a1d27',
-      border:       '1px solid #2d3148',
+      background:   '#ffffff',
+      border:       '1px solid #e2e8f0',
+      boxShadow:    '0 2px 8px rgba(15,23,42,0.12)',
       borderRadius: '6px',
       padding:      '0.4rem 0.65rem',
       fontSize:     '0.85rem',
@@ -107,7 +108,7 @@ function SeriesLegend({ accent }) {
     width: 8, height: 8, borderRadius: 2, background: color, display: 'inline-block',
   });
   return (
-    <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#94a3b8' }}>
+    <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#475569' }}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
         <span style={swatch(accent)} />
         IMI output
@@ -250,8 +251,7 @@ export function TimeSeriesPlot() {
   const chartData = lineData.years.map((year, i) => ({
     year,
     value:    convert(lineData.values[i]),
-    min:      convert(lineData.mins[i]),
-    max:      convert(lineData.maxs[i]),
+    ...(showUncertainty && { band: [convert(lineData.mins[i]), convert(lineData.maxs[i])] }),
     // undefined (not null) when showBottomUp is false so Recharts ignores the key entirely
     ...(showBottomUp && { bottomUp: convert(bottomUpLine?.values[i] ?? null) }),
   }));
@@ -283,21 +283,15 @@ export function TimeSeriesPlot() {
           {/* Uncertainty band */}
           {showUncertainty && (
             <>
+              {/* Range area: a [min, max] value fills only between the two,
+                  so nothing has to mask the region below the min line. */}
               <Area
                 type="monotone"
-                dataKey="max"
-                name="Upper bound"
+                dataKey="band"
+                name="Uncertainty"
                 stroke="none"
                 fill={accentDim}
-                legendType="none"
-                isAnimationActive={false}
-              />
-              <Area
-                type="monotone"
-                dataKey="min"
-                name="Lower bound"
-                stroke="none"
-                fill="#0f1117"
+                fillOpacity={1}
                 legendType="none"
                 isAnimationActive={false}
               />

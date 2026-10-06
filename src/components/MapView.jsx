@@ -1164,10 +1164,10 @@ function ChoroplethLayer({
       const val  = row ? parseNumber(row[colKey]) : null;
 
       if (val == null || !Number.isFinite(val)) {
-        return { fillColor: '#2a2a3a', fillOpacity: 0.5, color: '#444', weight: 0.6 };
+        return { fillColor: '#e2e8f0', fillOpacity: 0.5, color: '#cbd5e1', weight: 0.6 };
       }
       const t = (val - domain.min) / ((domain.max - domain.min) || 1);
-      return { fillColor: stopsToColor(t, colorStops), fillOpacity: opacity, color: '#1a1a2e', weight: 0.6 };
+      return { fillColor: stopsToColor(t, colorStops), fillOpacity: opacity, color: '#ffffff', weight: 0.6 };
     },
     [stateDataMap, colKey, domain, colorStops, opacity],
   );
@@ -1200,8 +1200,8 @@ function ChoroplethLayer({
       });
       layer.on({
         click(e)     { e.originalEvent?.stopPropagation?.(); onStateClick(name); },
-        mouseover(e) { e.target.setStyle({ weight: 2.5, color: '#fff', fillOpacity: opacityRef.current }); e.target.bringToFront(); },
-        mouseout(e)  { e.target.setStyle({ weight: 0.6, color: '#1a1a2e', fillOpacity: opacityRef.current }); },
+        mouseover(e) { e.target.setStyle({ weight: 2.5, color: '#0f172a', fillOpacity: opacityRef.current }); e.target.bringToFront(); },
+        mouseout(e)  { e.target.setStyle({ weight: 0.6, color: '#ffffff', fillOpacity: opacityRef.current }); },
       });
     },
     [onStateClick, stateDataMap, colKey, convert, units, sectorRanges, sector, satellite],
@@ -1220,7 +1220,7 @@ function StateBorderLayer({ geojson, selectedState, onStateClick }) {
       return {
         fillColor:   'transparent',
         fillOpacity: 0,
-        color:       name === selectedState ? '#ffffff' : 'rgba(255,255,255,0.25)',
+        color:       name === selectedState ? '#0f172a' : 'rgba(15,23,42,0.25)',
         weight:      name === selectedState ? 2 : 0.5,
       };
     },

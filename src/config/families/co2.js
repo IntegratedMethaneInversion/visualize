@@ -8,8 +8,8 @@ registerFamily({
   description: 'Carbon dioxide emissions estimates derived from satellite remote sensing observations.',
   enabled:     false, // temporarily hidden from dashboard — flip to re-enable
   theme: {
-    accent:     '#3b82f6',               // blue
-    accentDim:  'rgba(59,130,246,0.15)',
-    accentText: '#eff6ff',
+    accent:     '#2563eb',               // blue
+    accentDim:  'rgba(37,99,235,0.15)',
+    accentText: '#ffffff',
   },
 });

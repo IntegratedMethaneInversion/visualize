@@ -26,9 +26,9 @@ import { buildPeriodBarData }       from '../utils/manifestUtils';
 import { DownloadCSVButton }        from './DownloadCSVButton';
 import { slugify }                  from '../utils/csvExport';
 
-const DIM_COLOR    = '#99a7b9';
-const BRIGHT_COLOR = '#e2e8f0';
-const TEAL_COLOR   = '#14b8a6';
+const DIM_COLOR    = '#64748b';
+const BRIGHT_COLOR = '#0f172a';
+const TEAL_COLOR   = '#0d9488';
 
 // Manifest total_kg values are in the tens-of-millions for a whole-basin
 // week; Gg (1e6 kg) keeps the axis/tooltip numbers readable.
@@ -117,7 +117,7 @@ function SeriesLegend({ accent }) {
     width: 8, height: 8, borderRadius: 2, background: color, display: 'inline-block',
   });
   return (
-    <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#94a3b8' }}>
+    <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#475569' }}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
         <span style={swatch(accent)} />
         IMI Best Estimate
@@ -136,8 +136,9 @@ function UploadBarTooltip({ active, payload, label, units, accent }) {
 
   return (
     <div style={{
-      background:   '#1a1d27',
-      border:       '1px solid #2d3148',
+      background:   '#ffffff',
+      border:       '1px solid #e2e8f0',
+      boxShadow:    '0 2px 8px rgba(15,23,42,0.12)',
       borderRadius: '6px',
       padding:      '0.4rem 0.65rem',
       fontSize:     '0.85rem',
@@ -190,8 +191,9 @@ function SectorBarCustomTooltip({
 
   return (
     <div style={{
-      background:   '#1a1d27',
-      border:       '1px solid #2d3148',
+      background:   '#ffffff',
+      border:       '1px solid #e2e8f0',
+      boxShadow:    '0 2px 8px rgba(15,23,42,0.12)',
       borderRadius: '6px',
       padding:      '0.4rem 0.65rem',
       fontSize:     '0.85rem',
@@ -277,20 +279,20 @@ function SectorBarChartBody({
       >
         <CartesianGrid
           strokeDasharray="3 3"
-          stroke="rgba(255,255,255,0.06)"
+          stroke="rgba(15,23,42,0.08)"
           horizontal={false}
         />
         <XAxis
           type="number"
-          tick={{ fill: '#94a3b8', fontSize: 13 }}
-          axisLine={{ stroke: '#2d3148' }}
+          tick={{ fill: '#64748b', fontSize: 13 }}
+          axisLine={{ stroke: '#e2e8f0' }}
           tickLine={false}
           tickFormatter={formatAxisValue}
         />
         <YAxis
           type="category"
           dataKey="sector"
-          tick={{ fill: '#94a3b8', fontSize: 14 }}
+          tick={{ fill: '#64748b', fontSize: 14 }}
           axisLine={false}
           tickLine={false}
           width={labelWidth}
@@ -305,7 +307,7 @@ function SectorBarChartBody({
               showBottomUp={showBottomUp}
             />
           }
-          cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+          cursor={{ fill: 'rgba(15,23,42,0.04)' }}
         />
 
         {/* Posterior bars */}
@@ -318,7 +320,7 @@ function SectorBarChartBody({
               dataKey="errorDelta"
               width={4}
               strokeWidth={1.5}
-              stroke="#e2e8f0"
+              stroke={BRIGHT_COLOR}
               direction="x"
             />
           )}
@@ -368,25 +370,25 @@ export function SectorBarChart() {
             data={chartData}
             margin={{ top: 4, right: 12, left: 0, bottom: 4 }}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" horizontal={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(15,23,42,0.08)" horizontal={false} />
             <XAxis
               type="number"
-              tick={{ fill: '#94a3b8', fontSize: 13 }}
-              axisLine={{ stroke: '#2d3148' }}
+              tick={{ fill: '#64748b', fontSize: 13 }}
+              axisLine={{ stroke: '#e2e8f0' }}
               tickLine={false}
               tickFormatter={formatAxisValue}
             />
             <YAxis
               type="category"
               dataKey="sector"
-              tick={{ fill: '#94a3b8', fontSize: 14 }}
+              tick={{ fill: '#64748b', fontSize: 14 }}
               axisLine={false}
               tickLine={false}
               width={90}
             />
             <Tooltip
               content={<UploadBarTooltip units={units} accent={accent} />}
-              cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+              cursor={{ fill: 'rgba(15,23,42,0.04)' }}
             />
             <Bar dataKey="value" name="Total" radius={[0, 3, 3, 0]}>
               {chartData.map((_, i) => (

@@ -9,8 +9,8 @@ registerFamily({
 
 Uploaded datasets are not included in the library of stored research results in the CH₄ and CO₂ tabs. Upon publication, your results can be added to the library by reaching out to the IMI team. This window serves as a useful testbed to ensure your data is properly formatted prior to submission.`,
   theme: {
-    accent:     '#22c55e',               // green
-    accentDim:  'rgba(34,197,94,0.15)',
-    accentText: '#052e13',
+    accent:     '#16a34a',               // green
+    accentDim:  'rgba(22,163,74,0.15)',
+    accentText: '#ffffff',
   },
 });

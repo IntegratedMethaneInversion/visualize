@@ -1,11 +1,17 @@
 :root {
-  --bg-primary:   #0f1117;
-  --bg-secondary: #1a1d27;
-  --bg-elevated:  #222535;
-  --accent:       #4ade80;
-  --text-primary: #f1f5f9;
-  --text-muted:   #94a3b8;
-  --border:       #2d3148;
+  color-scheme:   light;
+  --bg-primary:   #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-elevated:  #f1f5f9;
+  /* Defaults double as the Upload family's theme, which has no
+     [data-family] block of its own. */
+  --accent:       #16a34a;
+  --accent-dim:   rgba(22,163,74,0.15);
+  --accent-text:  #15803d;
+  --accent-fg:    #ffffff;
+  --text-primary: #0f172a;
+  --text-muted:   #475569;
+  --border:       #e2e8f0;
   --sidebar-w:    500px;
   --header-h:     56px;
 }
@@ -32,9 +38,9 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 .family-warning-banner {
   width:            100%;
   padding:          .5rem 1rem;
-  background:       rgba(239, 68, 68, 0.15);
+  background:       rgba(239, 68, 68, 0.1);
   border-bottom:    1px solid #ef4444;
-  color:            #fca5a5;
+  color:            #b91c1c;
   font-size:        .82rem;
   font-weight:      500;
   text-align:       center;
@@ -43,18 +49,22 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 
 
 /* ── Family theming ────────────────────────────────────────────────────────────
-   All components use var(--accent) — changing it here re-themes everything.   */
+   All components use var(--accent) — changing it here re-themes everything.
+   --accent fills and outlines; --accent-text is the darker shade for small
+   text on the light background; --accent-fg is text drawn ON the accent.   */
 
 .dashboard[data-family="CH4"] {
-  --accent:     #f59e0b;
-  --accent-dim: rgba(220, 148, 47, 0.831);
-  --accent-fg:  #1c0a00;
+  --accent:      #d97706;
+  --accent-dim:  rgba(217,119,6,0.15);
+  --accent-text: #b45309;
+  --accent-fg:   #1c0a00;
 }
 
 .dashboard[data-family="CO2"] {
-  --accent:     #3b82f6;
-  --accent-dim: rgba(59,130,246,0.15);
-  --accent-fg:  #eff6ff;
+  --accent:      #2563eb;
+  --accent-dim:  rgba(37,99,235,0.15);
+  --accent-text: #1d4ed8;
+  --accent-fg:   #ffffff;
 }
 
 /* Smooth accent transition when switching families */
@@ -71,8 +81,8 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 .selector-tab         { padding: .3rem .8rem; border-radius: 6px; border: none;
                         background: transparent; color: var(--text-muted);
                         font-size: .78rem; cursor: pointer; transition: all .15s; }
-.selector-tab:hover   { color: var(--text-primary); background: rgba(255,255,255,.05); }
-.selector-tab.active  { background: var(--accent); color: #0f1117; font-weight: 600; }
+.selector-tab:hover   { color: var(--text-primary); background: rgba(15,23,42,.05); }
+.selector-tab.active  { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
 
 .selector-tab,
 .selector-tab.active,
@@ -117,8 +127,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 .family-tab.active {
   background:   var(--tab-accent);
   border-color: var(--tab-accent);
-  /* Use a dark foreground regardless of family (both amber and blue are light) */
-  color:        #0f1117;
+  color:        var(--accent-fg);
 }
 
 .family-tab-formula {
@@ -150,7 +159,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
   border-radius:    4px;
   background:       var(--accent-dim);
   border:           1px solid var(--accent);
-  color:            var(--accent);
+  color:            var(--accent-text);
   font-size:        .85rem;
   font-weight:      700;
   letter-spacing:   .06em;
@@ -173,7 +182,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 /* Dataset info */
 .dataset-info h2      { font-size: 2.85rem; font-weight: 600; margin-bottom: .3rem; }
 .dataset-info p       { font-size: .85rem; color: var(--text-muted); line-height: 1.5; white-space: pre-line; }
-.citation-link        { color: var(--accent); }
+.citation-link        { color: var(--accent-text); }
 .citation-link:hover  { text-decoration: underline; }
 
 
@@ -193,7 +202,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
   position:       absolute;
   pointer-events: none;
   z-index:        1000;
-  background:     rgba(15, 17, 23, 0.92);
+  background:     rgba(255, 255, 255, 0.95);
   color:          var(--text-primary);
   border:         1px solid var(--border);
   border-radius:  6px;
@@ -202,7 +211,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
   font-weight:    600;
   white-space:    nowrap;
   line-height:    1.4;
-  box-shadow:     0 2px 8px rgba(0, 0, 0, 0.45);
+  box-shadow:     0 2px 8px rgba(15, 23, 42, 0.15);
   /* anchor the bottom of the tooltip to the cursor y */
   transform:      translateY(-100%) translateY(-6px);
 }
@@ -245,7 +254,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 .control-label        { font-size: .73rem; color: var(--text-muted); }
 .slider-control       { display: flex; align-items: center; gap: .5rem; }
 .slider-control input { flex: 1; accent-color: var(--accent); cursor: pointer; }
-.slider-value         { font-size: .78rem; color: var(--accent); font-weight: 600; min-width: 2.5rem; text-align: right; }
+.slider-value         { font-size: .78rem; color: var(--accent-text); font-weight: 600; min-width: 2.5rem; text-align: right; }
 .select-control       { width: 100%; background: var(--bg-elevated); border: 1px solid var(--border);
                         color: var(--text-primary); padding: .35rem .5rem;
                         border-radius: 6px; font-size: .78rem; cursor: pointer; }
@@ -255,7 +264,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
                         cursor: pointer; padding: .25rem .5rem; border-radius: 4px;
                         background: var(--bg-elevated); border: 1px solid var(--border);
                         transition: all .1s; user-select: none; }
-.radio-option.active  { border-color: var(--accent); color: var(--accent); }
+.radio-option.active  { border-color: var(--accent); color: var(--accent-text); }
 .radio-option input   { accent-color: var(--accent); }
 
 /* ── UploadPanel ─────────────────────────────────────────────────────────── */
@@ -272,15 +281,15 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 .upload-text-input:focus { outline: none; border-color: var(--accent); }
 .upload-file-input    { cursor: pointer; }
 .upload-hint          { font-size: .68rem; color: var(--text-muted); line-height: 1.5; margin: 0; }
-.upload-error         { font-size: .73rem; color: #f87171; background: rgba(248,113,113,0.1);
-                        border: 1px solid rgba(248,113,113,0.35); border-radius: 6px; padding: .4rem .5rem; }
+.upload-error         { font-size: .73rem; color: #b91c1c; background: rgba(220,38,38,0.08);
+                        border: 1px solid rgba(220,38,38,0.35); border-radius: 6px; padding: .4rem .5rem; }
 .upload-clear-btn      { background: var(--bg-elevated); border: 1px solid var(--border);
                         color: var(--text-primary); padding: .25rem .6rem; border-radius: 6px;
                         font-size: .73rem; cursor: pointer; align-self: flex-start; }
-.upload-clear-btn:hover { border-color: var(--accent); color: var(--accent); }
+.upload-clear-btn:hover { border-color: var(--accent); color: var(--accent-text); }
 
 .upload-usage          { display: flex; flex-direction: column; gap: .25rem; }
-.upload-usage-bar      { height: 6px; border-radius: 3px; background: rgba(255,255,255,0.08);
+.upload-usage-bar      { height: 6px; border-radius: 3px; background: rgba(15,23,42,0.08);
                         overflow: hidden; }
 .upload-usage-fill     { height: 100%; background: var(--accent); border-radius: 3px;
                         transition: width .2s ease; }
@@ -300,11 +309,11 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 .upload-sector-row.active { border-color: var(--accent); }
 .upload-sector-name    { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
                         color: var(--text-primary); }
-.upload-sector-row.active .upload-sector-name { color: var(--accent); font-weight: 600; }
+.upload-sector-row.active .upload-sector-name { color: var(--accent-text); font-weight: 600; }
 .upload-sector-size    { color: var(--text-muted); font-size: .68rem; }
 .upload-sector-remove  { background: none; border: none; color: var(--text-muted);
                         font-size: 1rem; line-height: 1; cursor: pointer; padding: 0 .15rem; }
-.upload-sector-remove:hover { color: #f87171; }
+.upload-sector-remove:hover { color: #dc2626; }
 
 /* Legend */
 .legend               { padding: .75rem; background: var(--bg-elevated);
@@ -348,7 +357,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
   font-size:      .95rem;
   font-weight:    700;
   text-align:     center;
-  color:          var(--accent-dim);
+  color:          var(--accent-text);
   opacity:        0.8;
   overflow-wrap:  anywhere;
 }
@@ -369,7 +378,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
   overflow-wrap: anywhere;
 }
 
-.dtc-accent { color: var(--accent); }
+.dtc-accent { color: var(--accent-text); }
 
 .dtc-dim {
   color:       var(--text-muted);
@@ -398,7 +407,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 .map-container        { width: 100%; height: 100%; }
 /* No brightness/contrast filter on the basemap panes. The old
    `brightness(1.5) contrast(1.1)` was compensating for a basemap that was
-   rendering nearly blank; against a working vector basemap it washed the dark
+   rendering nearly blank; against a working vector basemap it washed the
    ocean out to pale grey. Tone is set per-layer in VectorBasemap.jsx now — if
    the basemap needs to be lighter or darker, change the colours there rather
    than filtering the whole pane, which cannot distinguish one feature from
@@ -406,9 +415,9 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 .map-overlay          { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%);
                         padding: .45rem 1rem; border-radius: 8px; font-size: .82rem;
                         pointer-events: none; z-index: 10; white-space: nowrap; }
-.map-overlay.loading  { background: rgba(15,17,23,.85); color: var(--accent);
+.map-overlay.loading  { background: rgba(255,255,255,.95); color: var(--accent-text);
                         border: 1px solid var(--border); }
-.map-overlay.error    { background: rgba(239,68,68,.15); color: #fca5a5;
+.map-overlay.error    { background: rgba(254,242,242,.95); color: #b91c1c;
                         border: 1px solid #ef4444; }
 
 /* ── Shared chart panel wrapper ──────────────────────────────────────────────── */
@@ -436,7 +445,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 .chart-year {
   font-size:   .85rem;
   font-weight: 700;
-  color:       var(--accent);
+  color:       var(--accent-text);
   margin-left: auto;
 }
 
@@ -450,11 +459,11 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 
 .chart-status {
   font-size: .72rem;
-  color:     var(--accent);
+  color:     var(--accent-text);
 }
 
 .chart-status.error {
-  color: #fca5a5;
+  color: #b91c1c;
 }
 
 /* Deliberately quiet: the chart is the content, the export is a utility.
@@ -477,9 +486,9 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 }
 
 .chart-download-btn:hover {
-  color:        var(--accent);
+  color:        var(--accent-text);
   border-color: var(--accent);
-  background:   rgba(255, 255, 255, .04);
+  background:   rgba(15, 23, 42, .04);
 }
 
 .chart-download-btn:focus-visible {
@@ -496,7 +505,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 
 .chart-place {
   font-size:   1.0 rem;
-  color:       var(--accent);
+  color:       var(--accent-text);
   font-weight: 600;
 }
 
@@ -514,7 +523,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 }
 
 .map-overlay.hint {
-  background: rgba(15,17,23,.75);
+  background: rgba(255,255,255,.9);
   color:      var(--text-muted);
   border:     2px solid var(--border);
 }
@@ -533,6 +542,6 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
   padding:        .1rem .35rem;
   border-radius:  3px;
   background:     var(--accent-dim);
-  color:          var(--accent);
+  color:          var(--accent-text);
   border:         1px solid var(--accent);
 }

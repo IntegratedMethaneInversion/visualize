@@ -10,8 +10,8 @@ registerFamily({
   dashboardTitle: 'IMI Results Dashboard', 
   description: 'Methane emissions estimates derived from satellite remote sensing observations.',
   theme: {
-    accent:     '#f59e0b',               // amber
-    accentDim:  'rgba(245,158,11,0.15)',
+    accent:     '#d97706',               // amber
+    accentDim:  'rgba(217,119,6,0.15)',
     accentText: '#1c0a00',
   },
 });

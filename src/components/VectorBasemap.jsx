@@ -1,13 +1,14 @@
 // ─── VectorBasemap ────────────────────────────────────────────────────────────
-// Dark Matter as MapLibre vector tiles, rendered as two Leaflet layers so place
-// names stay ABOVE the data overlays.
+// CARTO Positron as MapLibre vector tiles, rendered as two Leaflet layers so
+// place names stay ABOVE the data overlays.
 //
 // Why two: a MapLibre layer paints its whole style into one WebGL canvas on one
 // Leaflet pane, and the emission grids live on Leaflet panes at z-index 645–650.
-// A single instance would therefore put every label underneath the data. The 27
-// symbol layers in this style happen to be a contiguous block at the top of the
-// draw order, so splitting geometry from labels is a clean cut with nothing
-// interleaved — geometry goes on the tile pane, labels on `labelPane` above.
+// A single instance would therefore put every label underneath the data, so
+// the style is split by layer type — geometry goes on the tile pane, the 27
+// symbol layers on `labelPane` above. Positron's labels are not quite a
+// contiguous block (a few water labels sit below the road casings), so the
+// split lifts those few above the roads, which is harmless.
 //
 // The cost is two WebGL contexts sharing one vector source. Tile requests are
 // deduped by the HTTP cache, but each instance parses them, so this trades some
@@ -30,8 +31,8 @@ import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&ur
 
 setWorkerUrl(maplibreWorkerUrl);
 
-export const DARK_MATTER_STYLE_URL =
-  'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+export const POSITRON_STYLE_URL =
+  'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
 const ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors ' +
@@ -53,7 +54,7 @@ const LABEL_Z_INDEX = '660';
 // BRIGHTNESS and is left untouched by it.
 // ══════════════════════════════════════════════════════════════════════════════
 
-// Dark Matter's 93 layers, bucketed by what they draw. `groupOf` below assigns
+// Positron's 93 layers, bucketed by what they draw. `groupOf` below assigns
 // every layer to exactly one of these, so a single number can retone a whole
 // class of detail. Counts: road 51, label 27, land 5, boundary 4, water 3,
 // building 2, background 1. Every symbol layer counts as a label, so
@@ -78,25 +79,25 @@ function groupOf(layer) {
 // large value flattens toward white rather than wrapping.
 //
 // Applies to the *fill* colours only, never to `*-halo-color`: label halos are
-// the dark outline that keeps text legible over the emission grids, and
-// lightening them alongside the text erases the contrast it provides.
+// the light outline that keeps text legible over the emission grids, and
+// darkening them alongside the text erases the contrast it provides.
 //
 // Start here rather than with PAINT — one number retones 55 road layers at once
 // and keeps each layer's zoom ramp intact.
 const BRIGHTNESS = {
   background: 1,
-  water:      2,
-  land:       2,
-  boundary:   2,
-  road:       2,
+  water:      1,
+  land:       1,
+  boundary:   1,
+  road:       1,
   building:   1,
-  label:      1.5,
+  label:      0.6,   // Positron's stock greys wash out over the colour ramps
   other:      1,
 };
 
 // ─── 2. MIN_ZOOM ──────────────────────────────────────────────────────────────
 // The zoom at which a layer starts drawing — the dial that actually governs how
-// much regional detail appears. Dark Matter is tuned as a sparse backdrop and
+// much regional detail appears. Positron is tuned as a sparse backdrop and
 // withholds these until late, which is what made zoomed-in views feel empty.
 // Stock values in comments.
 const MIN_ZOOM = {
@@ -111,17 +112,16 @@ const MIN_ZOOM = {
 
 // ─── 3. PAINT ─────────────────────────────────────────────────────────────────
 // Exact style-spec paint properties on one layer, replacing whatever the style
-// had. Note that most Dark Matter colours are zoom ramps
-// (`{ stops: [[4, '#222'], [6, '#2C353C']] }`), so assigning a flat colour here
+// had. Note that most Positron colours are zoom ramps
+// (`{ stops: [[4, '#ead5d7'], [6, '#e1c5c7']] }`), so assigning a flat colour here
 // deliberately discards that ramp — which is usually what you want for a line
 // you need visible at every zoom. Pass a ramp object to keep zoom-dependence.
 //
 // These two replace the hard-coded white US state outline that used to be drawn
 // over the global choropleth, but apply worldwide and at every zoom.
 const PAINT = {
-  boundary_state:  { 'line-color': 'rgba(255,255,255,0.35)', 'line-width': 0.6 },
-  boundary_county: { 'line-color': 'rgba(255,255,255,0.15)' },
-  water:           { 'fill-color': '#020e18' },
+  boundary_state:  { 'line-color': 'rgba(15,23,42,0.35)', 'line-width': 0.6 },
+  boundary_county: { 'line-color': 'rgba(15,23,42,0.15)' },
   road_mot_case_noramp:          { 'line-color': '#ae620b', 'line-width': 0.8 },
 };
 
@@ -281,7 +281,7 @@ function GLLayer({ style, pane, attribution }) {
   return null;
 }
 
-export function VectorBasemap({ styleUrl = DARK_MATTER_STYLE_URL }) {
+export function VectorBasemap({ styleUrl = POSITRON_STYLE_URL }) {
   const map = useMap();
   const [split,  setSplit]  = useState(null);
   const [failed, setFailed] = useState(false);
@@ -314,13 +314,13 @@ export function VectorBasemap({ styleUrl = DARK_MATTER_STYLE_URL }) {
     return (
       <>
         <TileLayer
-          url={`https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png?key=${key}`}
+          url={`https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png?key=${key}`}
           attribution={ATTRIBUTION}
           subdomains="abcd"
           maxZoom={20}
         />
         <TileLayer
-          url={`https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png?key=${key}`}
+          url={`https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png?key=${key}`}
           subdomains="abcd"
           maxZoom={20}
           pane={LABEL_PANE}
