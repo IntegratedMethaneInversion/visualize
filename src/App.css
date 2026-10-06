@@ -410,7 +410,9 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 
 /* Map */
 .map-wrapper          { position: absolute; inset: 0; }
-.map-container        { width: 100%; height: 100%; }
+/* isolation keeps Leaflet's pane z-indexes (400–700) inside the map, so the
+   .map-overlay bubbles (z-index 10, siblings of the map) sit above it. */
+.map-container        { width: 100%; height: 100%; isolation: isolate; }
 /* No brightness/contrast filter on the basemap panes. The old
    `brightness(1.5) contrast(1.1)` was compensating for a basemap that was
    rendering nearly blank; against a working vector basemap it washed the

@@ -41,6 +41,9 @@ const ATTRIBUTION =
 // Data panes run 645–650 (see RasterLayer / JsonGridLayer / CountryGridLayer).
 const LABEL_PANE   = 'labelPane';
 const LABEL_Z_INDEX = '660';
+// Leaflet's tooltipPane defaults to 650, which would put the choropleth's
+// hover tooltips underneath the label canvas. Lifted just above the labels.
+const TOOLTIP_Z_INDEX = '670';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STYLE TUNING — the three knobs, coarsest first. Everything below this banner
@@ -294,6 +297,7 @@ export function VectorBasemap({ styleUrl = POSITRON_STYLE_URL }) {
     const pane = map.createPane(LABEL_PANE);
     pane.style.zIndex = LABEL_Z_INDEX;
     pane.style.pointerEvents = 'none';
+    map.getPane('tooltipPane').style.zIndex = TOOLTIP_Z_INDEX;
   }, [map]);
 
   useEffect(() => {
