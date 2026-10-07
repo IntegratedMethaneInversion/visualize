@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  base: '/IMI-viz-fromscratch/',
+  base: '/visualize/',
   plugins: [react()],
   server: {
     host: '0.0.0.0',   // ← listen on all interfaces
