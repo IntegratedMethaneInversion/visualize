@@ -28,7 +28,7 @@ const DEFAULT_PERIOD = periodsForYear(DEFAULT_YEAR)[0]?.key;
 registerDataset({
   id:       'ch4-permian-weekly',
   family:   'CH4',
-  name:         'Permian Basin - Weekly',   // big title on the dashboard
+  name:         'Weekly methane emissions over the Permian Basin',   // big title on the dashboard
   dropdownName: 'Permian Basin (Weekly) - Varon et al., 2025',   // label in the Dataset dropdown
   dataRoot: DATA_ROOT,
   description: 'Weekly methane emissions for the Permian basin generated with the IMI using TROPOMI satellite data. See Varon et al. (2025) for details.',
