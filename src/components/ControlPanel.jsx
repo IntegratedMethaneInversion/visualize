@@ -43,7 +43,6 @@ export function ControlPanel() {
 
   return (
     <div className="control-panel">
-      <span className="control-panel-title">Filters</span>
 
       {renderItems.map(item => {
         if (item.kind === 'single') {

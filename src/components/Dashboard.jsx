@@ -3,7 +3,7 @@ import { useDatasetContext } from '../context/DatasetContext';
 import { FamilySelector }   from './FamilySelector';
 import { DatasetSelector }  from './DatasetSelector';
 import { SectorSelector }   from './SectorSelector';
-import { ControlPanel }     from './ControlPanel';
+import { MapSettings }      from './MapSettings';
 import { UnitsSelector }    from './UnitsSelector';
 import { DataTotals }       from './DataTotals';
 import { UploadPanel }      from './UploadPanel';
@@ -83,8 +83,6 @@ export function Dashboard() {
 
           {activeDataset.id === 'user-upload' && <UploadPanel />}
 
-          <ControlPanel />
-          <Legend />
           <SectorBarChart />
           <TimeSeriesPlot />
 
@@ -92,6 +90,10 @@ export function Dashboard() {
 
         <main className="dashboard-main">
           <MapView />
+          {/* Floating over the map — siblings rather than children of MapView
+              so they sit outside Leaflet's isolated stacking context. */}
+          <MapSettings />
+          <Legend />
         </main>
 
       </div>
