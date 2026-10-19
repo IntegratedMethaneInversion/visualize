@@ -530,6 +530,24 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
   font-style: italic;
 }
 
+/* Top-right, clear of Leaflet's zoom control (top-left) and the centred
+   .map-overlay bubbles. */
+.map-reset-btn {
+  position:      absolute;
+  top:           1rem;
+  right:         1rem;
+  z-index:       10;
+  padding:       .45rem 1rem;
+  border-radius: 8px;
+  font-size:     .82rem;
+  background:    rgba(255,255,255,.95);
+  color:         var(--accent-text);
+  border:        1px solid var(--border);
+  box-shadow:    0 1px 4px rgba(15,23,42,.15);
+  cursor:        pointer;
+}
+.map-reset-btn:hover { background: var(--bg-elevated); border-color: var(--accent); }
+.map-reset-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .map-overlay.hint {
   background: rgba(255,255,255,.9);
   color:      var(--text-muted);

@@ -1461,6 +1461,19 @@ export function MapView() {
 
   const { initialViewState, minZoom = 2, maxZoom = 12 } = mapConfig;
 
+  // ch4-global has no click-to-deselect (see handleStateClick), and selecting a
+  // country zooms onto its grid, so this is the way back to the world view.
+  // MapController only recentres on dataset switch, so the view is reset here.
+  const [map, setMap] = useState(null);
+  const handleResetView = useCallback(() => {
+    setSelectedState(null);
+    map?.setView(
+      [initialViewState.latitude, initialViewState.longitude],
+      initialViewState.zoom,
+      { animate: true, duration: 0.5 },
+    );
+  }, [map, setSelectedState, initialViewState.latitude, initialViewState.longitude, initialViewState.zoom]);
+
   return (
     <div className="map-wrapper">
 
@@ -1476,6 +1489,11 @@ export function MapView() {
       {!loading && countryGridLoading && (
         <div className="map-overlay loading">Loading country grid…</div>
       )}
+      {activeDataset.gridType === 'country-mask' && selectedState && (
+        <button type="button" className="map-reset-btn" onClick={handleResetView}>
+          ← Back to {activeDataset.display?.defaultPlaceLabel ?? 'full'} view
+        </button>
+      )}
 
       {/*
         maxBounds / maxBoundsViscosity are intentionally omitted here —
@@ -1483,6 +1501,7 @@ export function MapView() {
       */}
       <MapContainer
         className="map-container"
+        ref={setMap}
         center={[initialViewState.latitude, initialViewState.longitude]}
         zoom={initialViewState.zoom}
         minZoom={minZoom}
