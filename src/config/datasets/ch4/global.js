@@ -66,21 +66,17 @@ const SECTORS = [
   { key: 'Reservoirs',  label: 'Reservoirs',          csv: 'Reservoirs',                   group: 'anthro'  },
   { key: 'OtherAnth',   label: 'Other anthropogenic', csv: 'Other',                        group: 'anthro'  },
   { key: 'Wetlands',    label: 'Wetlands',            csv: 'Wetlands',                     group: 'natural' },
-  // Selectable in its own right *and* counted inside `Natural` below, so these
-  // two bars overlap — the only pair in this table that does. Both are wanted:
-  // biomass burning is big enough to map on its own (~15 Tg/yr globally) but
-  // too small to warrant a third top-level category next to anthropogenic and
-  // natural.
+  // Its own bar, and deliberately *not* also inside `Natural` below, so the
+  // three natural bars partition the natural total with no overlap:
+  // Wetlands + Biomass burning + Other Natural = Total - TotalAnth exactly.
   { key: 'BiomassBurn', label: 'Biomass burning',     csv: 'BiomassBurn',                  group: 'natural' },
-  // Termites + seeps + biomass burning. Unlike `Total` and `TotalAnth` there's
-  // no propagated combined delta in the file, so this one sums its components'
-  // — a worst-case widening (assumes all three err the same direction at
-  // once). Summed world deltas run -14.1/+5.3 against a 37.2 Tg/yr central
-  // value, so the overlap it ignores is no longer negligible the way it was
-  // with termites and seeps alone; read this bar's whiskers as an outer bound.
-  { key: 'Natural',     label: 'Other Natural',       csv: ['Termites', 'Seeps', 'BiomassBurn'],
-                                                                                           group: 'natural',
-    includes: ['termites', 'seeps', 'biomass burning'] },
+  // Termites + seeps. Unlike `Total` and `TotalAnth` there's no propagated
+  // combined delta in the file, so this one sums its components' — a
+  // worst-case widening (assumes both err the same direction at once). Summed
+  // world deltas run -8.7/+3.8 against a 22.0 Tg/yr central value; read this
+  // bar's whiskers as an outer bound.
+  { key: 'Natural',     label: 'Other Natural',       csv: ['Termites', 'Seeps'],          group: 'natural',
+    includes: ['termites', 'seeps'] },
 ];
 
 const SECTOR_KEYS = SECTORS.map(s => s.key);
@@ -100,7 +96,7 @@ const SECTOR_OPTIONS = SECTORS.map(({ key, label }) => ({ value: key, label }));
 // natural sectors, and every sector's numbers are still loaded. So this hides
 // bars, it does not re-scope the dataset, and `Total` still means "all
 // sources" — its bar stays taller than the anthropogenic bars it now sits
-// next to, by the 225 Tg/yr of wetlands + other natural no longer drawn.
+// next to, by the 225 Tg/yr of natural sources no longer drawn.
 const ANTHRO_ONLY_BARS = false;
 
 const BAR_SECTORS = SECTORS

@@ -473,15 +473,16 @@ const COMPONENT_ONLY_SECTORS = ['Landfills', 'Wastewater', 'Termites', 'Seeps'];
 const NATIVE_SECTORS_NEEDED  = [...Object.keys(NATIVE_SECTOR_TO_CONTROL), ...COMPONENT_ONLY_SECTORS];
 
 // The anthropogenic/natural split, in native grid spellings, matching
-// global.js's SECTORS: biomass burning counts as natural, alongside termites
-// and seeps. This deliberately no longer mirrors build_country_sector_grids.py's
+// global.js's SECTORS: biomass burning counts as natural, but has its own
+// Sector entry, so `Natural` ("Other Natural") is termites + seeps only.
+// This deliberately no longer mirrors build_country_sector_grids.py's
 // `aggregates`, which still files BiomassBurn under TotalAnth — the precomputed
 // per-cell `emissions_TotalAnth_*`/`emissions_Natural_*` properties therefore
 // disagree with these lists and must not be read directly (see
 // CONTROL_SECTOR_TO_FILE_KEYS below). Regenerating those files with biomass
 // burning moved would let both go back to reading one property per cell.
 const TOTAL_ANTH_SECTORS = ['Coal', 'Landfills', 'Livestock', 'OG', 'OtherAnth', 'Rice', 'Wastewater', 'Reservoirs'];
-const NATURAL_SECTORS    = ['Termites', 'Seeps', 'BiomassBurn'];
+const NATURAL_SECTORS    = ['Termites', 'Seeps'];
 // The country CSV only has landfills and wastewater merged, so the dropdown's
 // `Waste` is the aggregate — the gridded products keep them separate.
 const WASTE_SECTORS      = ['Landfills', 'Wastewater'];

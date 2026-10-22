@@ -12,6 +12,9 @@ const SUPPORTED = new Set(['ch4-conus', 'ch4-colombia', 'ch4-global', 'ch4-permi
 // week; Gg (1e6 kg) keeps them readable, matching the two plots.
 const KG_TO_GG = 1e6;
 
+// ch4-global sector keys whose deltas add up to the Natural row's IMI range.
+const NATURAL_RANGE_SECTORS = ['Wetlands', 'BiomassBurn', 'Natural'];
+
 export function DataTotals() {
   const { activeDataset, controls, selectedState } = useDatasetContext();
   const { data: baseData } = useEmissionData();
@@ -151,10 +154,10 @@ export function DataTotals() {
   // IMI uncertainty ranges — only ch4-global's dataLoader provides
   // sectorRanges, so every other dataset shows bare values. Anthropogenic
   // reads AnthroTotal's own propagated deltas. Natural has no propagated
-  // delta in the file, so it sums Wetlands' and Other Natural's — a
-  // worst-case widening, the same caveat as the Other Natural bar.
-  // (Wetlands + Other Natural is exactly Total - AnthroTotal per country,
-  // so the central value here matches naturalPost.)
+  // delta in the file, so it sums its three bars' (Wetlands, Biomass
+  // burning, Other Natural) — a worst-case widening, the same caveat as the
+  // Other Natural bar. (Those three are exactly Total - AnthroTotal per
+  // country, so the central value here matches naturalPost.)
   const rangeEntry = activeDataset.id === 'ch4-global'
     ? (isState ? baseData.sectorRanges?.byCountry?.[selectedState] : baseData.sectorRanges?.world)
     : null;
@@ -171,8 +174,8 @@ export function DataTotals() {
   ));
   const naturalPostRange = toDisplayRange(boundsFromDeltas(
     (totalPost != null && anthroPost != null) ? totalPost - anthroPost : null,
-    sumDeltas('minDelta', ['Wetlands', 'Natural']),
-    sumDeltas('maxDelta', ['Wetlands', 'Natural']),
+    sumDeltas('minDelta', NATURAL_RANGE_SECTORS),
+    sumDeltas('maxDelta', NATURAL_RANGE_SECTORS),
   ));
 
   const placeLabel = selectedState
