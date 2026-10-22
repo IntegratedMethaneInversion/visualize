@@ -101,7 +101,7 @@ const SECTOR_OPTIONS = SECTORS.map(({ key, label }) => ({ value: key, label }));
 // bars, it does not re-scope the dataset, and `Total` still means "all
 // sources" — its bar stays taller than the anthropogenic bars it now sits
 // next to, by the 225 Tg/yr of wetlands + other natural no longer drawn.
-const ANTHRO_ONLY_BARS = true;
+const ANTHRO_ONLY_BARS = false;
 
 const BAR_SECTORS = SECTORS
   .filter(s => !ANTHRO_ONLY_BARS || s.group !== 'natural')

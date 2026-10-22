@@ -351,10 +351,12 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 
 .data-totals-table {
   display:               grid;
-  /* minmax(0, 1fr), not 1fr — a large unconverted number (e.g. totals in
-     Tons) is a single unbreakable token that otherwise forces the track
-     wider than the sidebar instead of wrapping. */
-  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+  /* The IMI column is max-content so "value (min, max)" stays on one line
+     (world-level "374.67 (288.06, 406.30)" is the widest case, ~210px);
+     bottom-up takes whatever is left. minmax(0, 1fr), not 1fr, there — a
+     large unconverted number is a single unbreakable token that otherwise
+     forces the track wider than the sidebar instead of wrapping. */
+  grid-template-columns: auto minmax(0, 1fr) max-content;
   row-gap:               .45rem;
   column-gap:            .75rem;
   align-items:           center;
@@ -396,10 +398,20 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 }
 
 .dtc-units {
+  font-size:      .85rem;
+  font-weight:    400;
+  letter-spacing: normal;
+  color:          var(--text-muted);
+  opacity:        0.85;
+}
+
+/* IMI "(min, max)" after the central value, kept on the same line by the
+   table's max-content IMI column. */
+.dtc-range {
   font-size:   .85rem;
   font-weight: 400;
+  white-space: nowrap;
   color:       var(--text-muted);
-  opacity:     0.85;
 }
 
 .control-group-row {

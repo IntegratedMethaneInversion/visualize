@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useDatasetContext } from '../context/DatasetContext';
 import { useEmissionData }   from '../hooks/useEmissionData';
 import { useDisplayUnit }    from '../hooks/useDisplayUnit';
-import { formatMassValue }   from '../utils/units';
+import { formatMassValue, formatRange, boundsFromDeltas } from '../utils/units';
 import { parseNumber }       from '../utils/emissionsUtils';
 import { PERMIAN_TOTAL_VARIABLE, getPeriodAnthroTotal } from '../utils/manifestUtils';
 
@@ -148,6 +148,33 @@ export function DataTotals() {
   const anthroBottomUpDisplay = convert(anthroBottomUp);
   const anthroPostDisplay     = convert(anthroPost);
 
+  // IMI uncertainty ranges — only ch4-global's dataLoader provides
+  // sectorRanges, so every other dataset shows bare values. Anthropogenic
+  // reads AnthroTotal's own propagated deltas. Natural has no propagated
+  // delta in the file, so it sums Wetlands' and Other Natural's — a
+  // worst-case widening, the same caveat as the Other Natural bar.
+  // (Wetlands + Other Natural is exactly Total - AnthroTotal per country,
+  // so the central value here matches naturalPost.)
+  const rangeEntry = activeDataset.id === 'ch4-global'
+    ? (isState ? baseData.sectorRanges?.byCountry?.[selectedState] : baseData.sectorRanges?.world)
+    : null;
+  const sumDeltas = (field, keys) => {
+    const parts = keys.map(k => rangeEntry?.[k]?.[field]);
+    return parts.some(v => v == null) ? null : parts.reduce((a, b) => a + b, 0);
+  };
+  const toDisplayRange = (bounds) =>
+    bounds ? formatRange(convert(bounds[0]), convert(bounds[1])) : null;
+  const anthroPostRange = toDisplayRange(boundsFromDeltas(
+    anthroPost,
+    rangeEntry?.TotalAnth?.minDelta,
+    rangeEntry?.TotalAnth?.maxDelta,
+  ));
+  const naturalPostRange = toDisplayRange(boundsFromDeltas(
+    (totalPost != null && anthroPost != null) ? totalPost - anthroPost : null,
+    sumDeltas('minDelta', ['Wetlands', 'Natural']),
+    sumDeltas('maxDelta', ['Wetlands', 'Natural']),
+  ));
+
   const placeLabel = selectedState
     ? selectedState.toUpperCase()
     : activeDataset.id === 'ch4-colombia' ? 'COLOMBIA'
@@ -165,19 +192,23 @@ export function DataTotals() {
   const { bottomUp: bottomUpLabel, posterior: posteriorLabel } = activeDataset.display.totalsLabels ?? {};
 
   // Helper: render a number cell — accented if populated, dimmed if not.
-  function NumCell({ value }) {
+  // Units live once in the place/period header rather than in every cell.
+  function NumCell({ value, range }) {
     const populated = value != null && Number.isFinite(value);
     return (
       <div className={`dtc-num ${populated ? 'dtc-accent' : 'dtc-dim'}`}>
         {fmt(value)}
-        {populated && <span className="dtc-units"> {units}</span>}
+        {populated && range && <> <span className="dtc-range">{range}</span></>}
       </div>
     );
   }
 
   return (
     <div className="data-totals-panel">
-      <div className="data-totals-place">{placeLabel}{' - '}{periodLabel}</div>
+      <div className="data-totals-place">
+        {placeLabel}{' - '}{periodLabel}
+        {' '}<span className="dtc-units">{units}</span>
+      </div>
 
       <div className="data-totals-table">
         <div className="dtc-col-header" />
@@ -186,11 +217,11 @@ export function DataTotals() {
 
         <div className="dtc-label">Anthropogenic</div>
         <NumCell value={anthroBottomUpDisplay} />
-        <NumCell value={anthroPostDisplay} />
+        <NumCell value={anthroPostDisplay} range={anthroPostRange} />
 
         <div className="dtc-label">Natural</div>
         <NumCell value={naturalBottomUp} />
-        <NumCell value={naturalPost} />
+        <NumCell value={naturalPost} range={naturalPostRange} />
       </div>
     </div>
   );
