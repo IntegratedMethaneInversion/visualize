@@ -67,7 +67,7 @@ export function formatMassValue(v) {
 export function formatRange(min, max, format = formatMassValue) {
   if (min == null || max == null) return null;
   if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
-  return `(${format(min)}, ${format(max)})`;
+  return `(${format(min)} - ${format(max)})`;
 }
 
 // The ranges CSVs give +/- delta magnitudes rather than absolute bounds, and
