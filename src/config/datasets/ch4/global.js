@@ -4,17 +4,6 @@ import { COUNTRY_VIEWS }           from './countryViews';
 
 const YEAR = 2023; // only year available for this dataset
 
-// One file backs this whole dataset's country-level numbers: the 2x2 totals,
-// the choropleth, the country hover tooltip and the Sector Breakdown chart's
-// values *and* uncertainty. It supersedes both emissions_data3.csv (older
-// inversion vintage, no natural-sector uncertainty) and
-// website_data_withranges.csv (anthropogenic sectors only) — neither is read
-// anywhere any more.
-//
-// Its `UNFCCC_total_*` sibling column in emissions_data_new.csv is not needed:
-// it equals `AnthroTotal - Reservoirs` exactly (verified for all 161 countries
-// in both estimates), i.e. the inventory-reportable subset, not a separate
-// estimate. Derive it if it's ever wanted rather than loading a second file.
 const CSV_URL = 'data/ch4_global/website_data_withranges_withnatural.csv';
 
 // ─── Single source of truth for this dataset's sectors ───────────────────────
@@ -43,14 +32,15 @@ const CSV_URL = 'data/ch4_global/website_data_withranges_withnatural.csv';
 // Sector Breakdown tooltip shows. Only set where the composition is actually
 // knowable from the source data: `Other` is a leaf column in every file we
 // have rather than an aggregate, so there is nothing to enumerate for it.
+
+// The includes: excludes: keys for the total columns govern the text for the 
+// popup in the sector bar chart.
 const SECTORS = [
   { key: 'Total',       label: 'Total (all sources)', csv: 'Total',                        group: 'total',
-    includes: ['every anthropogenic and natural sector below', 'excludes soil absorption'] },
+    includes: [' all anthropogenic and natural sources', 'excludes soil absorption. Error bars show the range from the inversion ensemble.'] },
   // Biomass burning is *not* in here: it's grouped with the natural sources
-  // below. That matches the file exactly — `AnthroTotal` is the sum of the
-  // seven anthropogenic columns to the digit, so this reads both the value and
-  // the propagated `_post_min`/`_post_max` deltas straight off one column with
-  // no approximation. (The gridded products still count biomass burning as
+  // below. 
+  // (The gridded products still count biomass burning as
   // anthropogenic in their precomputed `TotalAnth`, so MapView re-sums the
   // per-cell components instead of reading that aggregate — see
   // TOTAL_ANTH_SECTORS there.)
@@ -66,15 +56,10 @@ const SECTORS = [
   { key: 'Reservoirs',  label: 'Reservoirs',          csv: 'Reservoirs',                   group: 'anthro'  },
   { key: 'OtherAnth',   label: 'Other anthropogenic', csv: 'Other',                        group: 'anthro'  },
   { key: 'Wetlands',    label: 'Wetlands',            csv: 'Wetlands',                     group: 'natural' },
-  // Its own bar, and deliberately *not* also inside `Natural` below, so the
-  // three natural bars partition the natural total with no overlap:
-  // Wetlands + Biomass burning + Other Natural = Total - TotalAnth exactly.
   { key: 'BiomassBurn', label: 'Biomass burning',     csv: 'BiomassBurn',                  group: 'natural' },
-  // Termites + seeps. Unlike `Total` and `TotalAnth` there's no propagated
-  // combined delta in the file, so this one sums its components' — a
-  // worst-case widening (assumes both err the same direction at once). Summed
-  // world deltas run -8.7/+3.8 against a 22.0 Tg/yr central value; read this
-  // bar's whiskers as an outer bound.
+  // Termites + seeps. This directly sums component error bounds - not a perfect approach but these
+  // values are very small. Greater accuracy requires ensemble-member summing & recalculating bounds
+  // but we don't have the ensemble data.
   { key: 'Natural',     label: 'Other Natural',       csv: ['Termites', 'Seeps'],          group: 'natural',
     includes: ['termites', 'seeps'] },
 ];
@@ -97,6 +82,8 @@ const SECTOR_OPTIONS = SECTORS.map(({ key, label }) => ({ value: key, label }));
 // bars, it does not re-scope the dataset, and `Total` still means "all
 // sources" — its bar stays taller than the anthropogenic bars it now sits
 // next to, by the 225 Tg/yr of natural sources no longer drawn.
+//
+//TODO: take this out entirely
 const ANTHRO_ONLY_BARS = false;
 
 const BAR_SECTORS = SECTORS
@@ -144,8 +131,13 @@ registerDataset({
   family: 'CH4',
   name:         'Global methane emissions',   // big title on the dashboard
   dropdownName: 'Global - East et al., 2023',   // label in the Dataset dropdown
-  description: 'Annual methane emissions by country at 25-km resolution generated with the IMI using TROPOMI satellite data combined with bottom-up information from national BTRs. See East et al. (2025) for details.',
+  description: 'Annual methane emissions by country at 25-km resolution generated \
+  with the IMI using TROPOMI satellite data combined with bottom-up information from \
+  national BTRs. Values in parentheses and error bars are the confidence range from the \
+  inversion ensemble. See East et al. (2025) for details.',
   citation: { text: 'East et al. (2025)', url: 'https://www.nature.com/articles/s41467-025-67122-8' },
+ 
+  // Vestigial - we used to have indicators for which satellites' products were used as model input
   satellites: ['TROPOMI'],
 
   reloadTrigger: [],       // load all data once on dataset mount

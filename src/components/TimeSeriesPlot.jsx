@@ -222,7 +222,7 @@ export function TimeSeriesPlot() {
     );
   }
 
-  const years = activeYears(controls.satellite);
+  const years = activeYears();
   if (!SUPPORTED.has(activeDataset.id) || years.length < 2 || !baseData) return null;
 
   const mode       = selectedState ? 'state' : 'national';

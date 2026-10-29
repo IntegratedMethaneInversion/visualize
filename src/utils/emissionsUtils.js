@@ -76,11 +76,10 @@ export function hasUncertainty(satellite) {
   return satellite !== 'prior';
 }
 
-// Which years are valid for each data source
-export function activeYears(satellite) {
-  return satellite === 'prior'
-    ? [2019, 2020]
-    : [2019, 2020, 2021, 2022, 2023, 2024];
+// Years with data. Prior and posterior share the same range (CONUS's
+// dataLoader fills the prior gaps).
+export function activeYears() {
+  return [2019, 2020, 2021, 2022, 2023, 2024];
 }
 
 // ─── Bar chart data builder ───────────────────────────────────────────────────
@@ -134,7 +133,7 @@ export function buildBarData(baseData, { year, mode, satellite, selectedState })
 // ─── Time series data builder ─────────────────────────────────────────────────
 export function buildLineData(baseData, { mode, sectorKey, satellite, selectedState }) {
   const { byYear, nationalPosterior, nationalPrior, stateByYearPrior } = baseData;
-  const years = activeYears(satellite);
+  const years = activeYears();
 
   // national CSVs and state prior CSV all use bare keys;
   // state posterior CSV uses _posterior suffix

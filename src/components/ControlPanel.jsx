@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { useDatasetContext } from '../context/DatasetContext';
 import { useEmissionData }   from '../hooks/useEmissionData';
 import { SECTOR_CONTROL_KEY, resolveControlOptions } from '../utils/controls';
@@ -125,16 +125,27 @@ function SelectControl({ def, value, onChange }) {
   // If options carry numeric values, coerce the HTML string back to a number
   const isNumeric = def.options.length > 0 && typeof def.options[0].value === 'number';
 
+  // Options may carry a `note`, shown as a hover tooltip while that option is
+  // selected. Custom rather than a native `title`, which some browsers and
+  // embedded previews never display. The wrapper is always rendered so the
+  // select isn't remounted (losing focus) when the note comes and goes.
+  const note   = def.options.find(opt => opt.value === value)?.note;
+  const noteId = useId();
+
   return (
-    <select
-      className="select-control"
-      value={value}
-      onChange={e => onChange(isNumeric ? Number(e.target.value) : e.target.value)}
-    >
-      {def.options.map(opt => (
-        <option key={opt.value} value={opt.value}>{opt.label}</option>
-      ))}
-    </select>
+    <div className="select-note-wrap">
+      <select
+        className="select-control"
+        value={value}
+        aria-describedby={note ? noteId : undefined}
+        onChange={e => onChange(isNumeric ? Number(e.target.value) : e.target.value)}
+      >
+        {def.options.map(opt => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+      {note && <div id={noteId} className="select-note" role="tooltip">{note}</div>}
+    </div>
   );
 }
 

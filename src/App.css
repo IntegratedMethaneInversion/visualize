@@ -263,6 +263,18 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
                         color: var(--text-primary); padding: .35rem .5rem;
                         border-radius: 6px; font-size: .78rem; cursor: pointer; }
 .select-control:focus { outline: none; border-color: var(--accent); }
+/* Hover note for a select's current option (ControlPanel's `note`). Anchored
+   to the right edge so it stays inside the Map Settings panel when the select
+   is the right-hand cell of a row. */
+.select-note-wrap     { position: relative; }
+.select-note          { display: none; position: absolute; top: calc(100% + 4px); right: 0;
+                        width: 220px; z-index: 5; pointer-events: none;
+                        background: rgba(255, 255, 255, 0.97); color: var(--text-primary);
+                        border: 1px solid var(--border); border-radius: 6px;
+                        padding: .35rem .55rem; font-size: .72rem; line-height: 1.4;
+                        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.15); }
+.select-note-wrap:hover .select-note,
+.select-control:focus-visible + .select-note { display: block; }
 .radio-control        { display: flex; flex-wrap: wrap; gap: .3rem; }
 .radio-option         { display: flex; align-items: center; gap: .25rem; font-size: .85rem;
                         cursor: pointer; padding: .25rem .5rem; border-radius: 4px;

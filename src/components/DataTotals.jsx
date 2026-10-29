@@ -85,7 +85,8 @@ export function DataTotals() {
     }
 
     // ── CONUS national ────────────────────────────────────────────────────────
-    // Bottom-up is always GHGI prior (available for 2019–2020 only).
+    // Bottom-up is the GHGI prior for 2019–2020 and the summed state-CSV
+    // prior for 2021–2024 (see conus.js dataLoader).
     // Posterior is only shown when satellite = posterior.
     if (!isState) {
       const priorRow = baseData.nationalPrior?.[year];

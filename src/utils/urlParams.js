@@ -68,8 +68,8 @@ export function readUrlParams() {
 // ─── Controls ────────────────────────────────────────────────────────────────
 
 // A control's `options` is either a static array or a function of the other
-// controls (e.g. CONUS's year list narrows when satellite is 'prior', and
-// permian-weekly's week slider is scoped to the selected year), so resolve it
+// controls (e.g. permian-weekly's week slider is scoped to the selected
+// year), so resolve it
 // against the controls settled so far. Controls that instead declare
 // `getOptions(baseData)` have no statically knowable option list — their valid
 // values only exist once the dataset's data has loaded, which is after this
