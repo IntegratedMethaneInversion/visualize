@@ -19,6 +19,7 @@ import {
   buildBottomUpBarData,
   buildRangesBarData,
   buildRangesBottomUpBarData,
+  rangesForYear,
   labelSector,
   hasUncertainty,
 }                                  from '../utils/emissionsUtils';
@@ -454,11 +455,12 @@ export function SectorBarChart() {
   }
 
   if (activeDataset.id === 'ch4-global') {
-    if (!baseData?.sectorRanges) return null;
+    const sectorRanges = rangesForYear(baseData?.sectorRanges, controls.year);
+    if (!sectorRanges) return null;
 
     const placeLabel = selectedState ?? (activeDataset.display?.defaultPlaceLabel ?? 'National');
 
-    const rangesData = buildRangesBarData(baseData.sectorRanges, {
+    const rangesData = buildRangesBarData(sectorRanges, {
       selectedState,
       satellite: controls.satellite,
     });
@@ -469,7 +471,7 @@ export function SectorBarChart() {
     const accent           = activeFamily.theme.accent;
 
     const bottomUpData = showBottomUp
-      ? buildRangesBottomUpBarData(baseData.sectorRanges, { selectedState })
+      ? buildRangesBottomUpBarData(sectorRanges, { selectedState })
       : null;
 
     const resolvedSectors = resolveBarSectors(rangesData.labels, activeDataset.display?.barSectors);
