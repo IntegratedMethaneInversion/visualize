@@ -425,73 +425,24 @@ function useJsonGridMax(url) {
   return max;
 }
 
-// ─── useGlobalEnsembleMinMax (ch4-global hover uncertainty) ───────────────────
+// ─── useCountryGridEnsemble (ch4-global hover uncertainty) ────────────────────
 // ch4-global has no per-sector/year ensemble rasters like CONUS — instead
-// there's one gzipped JSON covering the whole world at the model's native
-// 0.25°x0.3125° resolution, for every sector at once. This fetches it once
-// and reshapes the sectors the Sector dropdown can select into dense
-// {gridMeta, values} pairs — same shape Colombia's hover already consumes,
-// so the lookup itself is just getValueAtLatLngFromGrid, same as Colombia.
+// there's one gzipped JSON per year covering the whole world at the model's
+// native 0.25°x0.3125° resolution, for every sector at once. This fetches it
+// once and reshapes each Sector dropdown value into dense {minValues,
+// maxValues} arrays on a shared {gridMeta} — same shape Colombia's hover
+// already consumes, so the lookup itself is just getValueAtLatLngFromGrid.
 //
-// The file only ships "_post" (posterior) variables — no ensemble exists for
-// the bottom-up/prior estimate — so there's nothing to look up when the Data
-// Source control is set to prior; callers should treat a null result as
-// "no uncertainty available" rather than an error.
-//
-// TotalAnth, Natural and Waste aren't native ensemble variables, so their
-// spread is approximated by summing the constituent sectors' min/max
-// element-wise — the same composition the central value uses (see
-// TOTAL_ANTH_SECTORS / NATURAL_SECTORS / WASTE_SECTORS below), just applied to
-// the bounds instead of the estimate. Summing independent bounds like this is
-// a worst-case approximation (assumes every sector errs the same direction at
-// once), not a statistically rigorous propagation — reasonable for a hover
-// tooltip, but worth knowing if this number is ever used for anything more
-// rigorous. `Total` needs no such approximation: the file ships a native
-// Total_Excl_Soil, which is exactly the country CSV's `Total` definition
-// (anthropogenic + wetlands + termites + seeps + biomass burning, soil
-// excluded).
-const ENSEMBLE_MINMAX_URL = `${import.meta.env.BASE_URL}data/ch4_global/ensemble_minmax.json.gz`;
+// The file only ships "_post" (posterior) variables, so there's nothing to look
+// up when the Data Source control is set to prior; callers should treat a null
+// result as "no uncertainty available" rather than an error. Which native
+// variables make up each sector, and the file's units, come from the dataset's
+// `countryGrid` config (see ch4/global.js).
 
-// Native ensemble variable name -> the Sector dropdown value it corresponds
-// to (see global.js's SECTOR_OPTIONS). Only OG/OilAndGas and
-// Total_Excl_Soil/Total differ in spelling.
-const NATIVE_SECTOR_TO_CONTROL = {
-  BiomassBurn:     'BiomassBurn',
-  Coal:            'Coal',
-  Livestock:       'Livestock',
-  OG:              'OilAndGas',
-  OtherAnth:       'OtherAnth',
-  Rice:            'Rice',
-  Reservoirs:      'Reservoirs',
-  Wetlands:        'Wetlands',
-  Total_Excl_Soil: 'Total',
-};
-// Fetched to build the aggregates below, but not independently selectable:
-// the country CSV has landfills and wastewater only as a merged `Waste`, and
-// termites and seeps only inside `Natural`.
-const COMPONENT_ONLY_SECTORS = ['Landfills', 'Wastewater', 'Termites', 'Seeps'];
-const NATIVE_SECTORS_NEEDED  = [...Object.keys(NATIVE_SECTOR_TO_CONTROL), ...COMPONENT_ONLY_SECTORS];
-
-// The anthropogenic/natural split, in native grid spellings, matching
-// global.js's SECTORS: biomass burning counts as natural, but has its own
-// Sector entry, so `Natural` ("Other Natural") is termites + seeps only.
-// This deliberately no longer mirrors build_country_sector_grids.py's
-// `aggregates`, which still files BiomassBurn under TotalAnth — the precomputed
-// per-cell `emissions_TotalAnth_*`/`emissions_Natural_*` properties therefore
-// disagree with these lists and must not be read directly (see
-// CONTROL_SECTOR_TO_FILE_KEYS below). Regenerating those files with biomass
-// burning moved would let both go back to reading one property per cell.
-const TOTAL_ANTH_SECTORS = ['Coal', 'Landfills', 'Livestock', 'OG', 'OtherAnth', 'Rice', 'Wastewater', 'Reservoirs'];
-const NATURAL_SECTORS    = ['Termites', 'Seeps'];
-// The country CSV only has landfills and wastewater merged, so the dropdown's
-// `Waste` is the aggregate — the gridded products keep them separate.
-const WASTE_SECTORS      = ['Landfills', 'Wastewater'];
-
-// Fetched once per session and cached at module scope — CountryGridLayer
-// remounts (new `key`) on every country switch, but that should never
-// re-trigger a 20MB fetch + decompress + parse of a file whose content
-// never changes.
-let ensembleMinMaxPromise = null;
+// Cached per URL at module scope — CountryGridLayer remounts (new `key`) on
+// every country switch, but that should never re-trigger a 20MB fetch +
+// decompress + parse of a file whose content never changes.
+const ensembleCache = new Map();
 
 function sumDense(length, arrays) {
   const out = new Float32Array(length);
@@ -501,81 +452,86 @@ function sumDense(length, arrays) {
   return out;
 }
 
-function useGlobalEnsembleMinMax() {
-  const [result, setResult] = useState(null);
+function loadEnsemble(url, { ensembleVariables, ensembleMassUnit }) {
+  return fetch(url)
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status} — ${url}`);
+      // A static host serving this .gz as opaque bytes (no Content-Encoding
+      // header) hands us the raw gzip stream, so we decompress it ourselves.
+      // Vite's dev server instead declares Content-Encoding: gzip and the
+      // browser already transparently decodes it before we ever see the
+      // body — decompressing again there would choke on plain JSON text.
+      const alreadyDecoded = r.headers.get('content-encoding') === 'gzip';
+      return alreadyDecoded
+        ? r.text()
+        : new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).text();
+    })
+    .then(text => {
+      const raw = JSON.parse(text);
+      const { lat: lats, lon: lons } = raw.grid;
+      const nlon   = lons.length;
+      const length = lats.length * nlon;
+      const { lat_index: latIdx, lon_index: lonIdx } = raw.cells;
+
+      // Converted to Tg to match the country_sectors cells it annotates.
+      const toTg = convertMass(1, ensembleMassUnit, 'Tg');
+
+      // Native variable -> dense arrays, NaN wherever the sparse file has no
+      // cell (or lacks the variable entirely), so the tooltip omits a range
+      // there rather than showing a false zero.
+      const dense = {};
+      const denseFor = (variable) => {
+        if (dense[variable]) return dense[variable];
+        const { min, max } = raw.data[`EmisCH4_${variable}_post`] ?? {};
+        const minValues = new Float32Array(length).fill(NaN);
+        const maxValues = new Float32Array(length).fill(NaN);
+        if (min && max) {
+          for (let i = 0; i < latIdx.length; i++) {
+            const idx = latIdx[i] * nlon + lonIdx[i];
+            minValues[idx] = min[i] * toTg;
+            maxValues[idx] = max[i] * toTg;
+          }
+        }
+        return (dense[variable] = { minValues, maxValues });
+      };
+
+      // A single-variable sector sums to a copy of itself; NaN propagates
+      // through the sum, so an aggregate has no range where any part lacks one.
+      const bySector = {};
+      for (const [sector, variables] of Object.entries(ensembleVariables)) {
+        const parts = variables.map(denseFor);
+        bySector[sector] = {
+          minValues: sumDense(length, parts.map(p => p.minValues)),
+          maxValues: sumDense(length, parts.map(p => p.maxValues)),
+        };
+      }
+
+      return { gridMeta: { lats, lons }, bySector };
+    });
+}
+
+function useCountryGridEnsemble(countryGrid, year) {
+  const url = countryGrid.ensembleUrl(year);
+  // Tagged with its URL so a year switch reads as "not loaded yet" rather than
+  // showing the previous year's ranges while the new file loads.
+  const [loaded, setLoaded] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    if (!ensembleMinMaxPromise) {
-      ensembleMinMaxPromise = fetch(ENSEMBLE_MINMAX_URL)
-        .then(r => {
-          if (!r.ok) throw new Error(`HTTP ${r.status} — ${ENSEMBLE_MINMAX_URL}`);
-          // A static host serving this .gz as opaque bytes (no Content-Encoding
-          // header) hands us the raw gzip stream, so we decompress it ourselves.
-          // Vite's dev server instead declares Content-Encoding: gzip and the
-          // browser already transparently decodes it before we ever see the
-          // body — decompressing again there would choke on plain JSON text.
-          const alreadyDecoded = r.headers.get('content-encoding') === 'gzip';
-          return alreadyDecoded
-            ? r.text()
-            : new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).text();
-        })
-        .then(text => {
-          const raw = JSON.parse(text);
-          const { lat: lats, lon: lons } = raw.grid;
-          const nlon   = lons.length;
-          const length = lats.length * nlon;
-          const { lat_index: latIdx, lon_index: lonIdx } = raw.cells;
-
-          // Raw file is "Gg yr-1 per grid cell"; the country-mask grid it
-          // annotates (country_sectors/*.json → emissions_<Sector>_post) is Tg.
-          const ggToTg = convertMass(1, 'Gg', 'Tg');
-
-          const denseBySector = {}; // native sector name -> {minValues, maxValues}
-          for (const sector of NATIVE_SECTORS_NEEDED) {
-            const { min, max } = raw.data[`EmisCH4_${sector}_post`] ?? {};
-            const minValues = new Float32Array(length).fill(NaN);
-            const maxValues = new Float32Array(length).fill(NaN);
-            if (min && max) {
-              for (let i = 0; i < latIdx.length; i++) {
-                const idx = latIdx[i] * nlon + lonIdx[i];
-                minValues[idx] = min[i] * ggToTg;
-                maxValues[idx] = max[i] * ggToTg;
-              }
-            }
-            denseBySector[sector] = { minValues, maxValues };
-          }
-
-          const bySector = {};
-          for (const [native, controlValue] of Object.entries(NATIVE_SECTOR_TO_CONTROL)) {
-            bySector[controlValue] = denseBySector[native];
-          }
-          for (const [controlValue, natives] of [
-            ['TotalAnth', TOTAL_ANTH_SECTORS],
-            ['Natural',   NATURAL_SECTORS],
-            ['Waste',     WASTE_SECTORS],
-          ]) {
-            bySector[controlValue] = {
-              minValues: sumDense(length, natives.map(s => denseBySector[s].minValues)),
-              maxValues: sumDense(length, natives.map(s => denseBySector[s].maxValues)),
-            };
-          }
-
-          return { gridMeta: { lats, lons }, bySector };
-        })
-        .catch(err => {
-          console.error('[useGlobalEnsembleMinMax] load error:', err.message);
-          ensembleMinMaxPromise = null; // allow a retry on next mount rather than caching the failure
-          return null;
-        });
+    if (!ensembleCache.has(url)) {
+      ensembleCache.set(url, loadEnsemble(url, countryGrid).catch(err => {
+        console.error('[useCountryGridEnsemble] load error:', err.message);
+        ensembleCache.delete(url); // allow a retry on next mount rather than caching the failure
+        return null;
+      }));
     }
 
-    ensembleMinMaxPromise.then(r => { if (!cancelled) setResult(r); });
+    ensembleCache.get(url).then(data => { if (!cancelled) setLoaded({ url, data }); });
     return () => { cancelled = true; };
-  }, []);
+  }, [url, countryGrid]);
 
-  return result;
+  return loaded?.url === url ? loaded.data : null;
 }
 
 // ─── JsonGridHoverLayer ───────────────────────────────────────────────────────
@@ -892,27 +848,12 @@ function cellBBox(geometry) {
   return Number.isFinite(minLat) ? { minLat, maxLat, minLon, maxLon } : null;
 }
 
-// Sector dropdown value -> the country_sectors/*.json property key(s) holding
-// that sector's estimate; multiple keys are summed. Only OilAndGas/OG differs
-// in spelling.
-//
-// TotalAnth and Natural are summed from their components rather than read off
-// the precomputed `emissions_TotalAnth_*`/`emissions_Natural_*` properties,
-// because those still count biomass burning as anthropogenic — see
-// TOTAL_ANTH_SECTORS above. `Total` needs no entry: it's precomputed and its
-// definition is unaffected by which side of the split biomass burning sits on.
-// `Waste` is summed for a different reason: these grids keep landfills and
-// wastewater separate, while the country CSV only has them merged.
-const CONTROL_SECTOR_TO_FILE_KEYS = {
-  OilAndGas: ['OG'],
-  Waste:     WASTE_SECTORS,
-  TotalAnth: TOTAL_ANTH_SECTORS,
-  Natural:   NATURAL_SECTORS,
-};
-
-function emissionsPropertyKeys(sector, satellite) {
+// Sector dropdown value -> the cell property key(s) holding that sector's
+// estimate; multiple keys are summed. `cellVariables` is the dataset's
+// countryGrid.cellVariables (see ch4/global.js).
+function emissionsPropertyKeys(cellVariables, sector, satellite) {
   const suffix = satellite === 'prior' ? 'prior' : 'post';
-  const keys   = CONTROL_SECTOR_TO_FILE_KEYS[sector] ?? [sector];
+  const keys   = cellVariables[sector] ?? [sector];
   return keys.map(k => `emissions_${k}_${suffix}`);
 }
 
@@ -938,16 +879,17 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
   const {
     controls, fitToSelection, urlView, selectedState, activeDataset,
   } = useDatasetContext();
-  const viewOverrides = activeDataset.viewOverrides;
+  const { viewOverrides, countryGrid } = activeDataset;
+  const { cellVariables } = countryGrid;
   const { convert, label: units } = useDisplayUnit();
-  const ensembleMinMax = useGlobalEnsembleMinMax();
+  const ensembleMinMax = useCountryGridEnsemble(countryGrid, controls.year);
   const layerRef = useRef(null);
   const rendererRef = useRef(null);
   // Placeholder until the fetch below resolves and overwrites it. Derived
   // rather than hardcoded so it can't drift from the sector definitions.
   const styleRef = useRef({
     colorStops, opacity, domainMax: 1,
-    propertyKeys: emissionsPropertyKeys('TotalAnth', 'posterior'),
+    propertyKeys: emissionsPropertyKeys(cellVariables, 'TotalAnth', 'posterior'),
   });
   styleRef.current.colorStops = colorStops;
   styleRef.current.opacity = opacity;
@@ -978,8 +920,8 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
         const features = data.features ?? [];
         featuresRef.current = features;
 
-        const propertyKeys       = emissionsPropertyKeys(controls.sector, controls.satellite);
-        const domainPropertyKeys = emissionsPropertyKeys(pinnedSector ?? controls.sector, controls.satellite);
+        const propertyKeys       = emissionsPropertyKeys(cellVariables, controls.sector, controls.satellite);
+        const domainPropertyKeys = emissionsPropertyKeys(cellVariables, pinnedSector ?? controls.sector, controls.satellite);
         const rawDomainMax       = domainMaxFor(features, domainPropertyKeys);
         const scaleMax           = controls.colorScaleMax ?? 1.0;
         styleRef.current.propertyKeys = propertyKeys;
@@ -1073,8 +1015,8 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
   // no refetch.
   useEffect(() => {
     if (!layerRef.current || !featuresRef.current.length) return;
-    const propertyKeys       = emissionsPropertyKeys(controls.sector, controls.satellite);
-    const domainPropertyKeys = emissionsPropertyKeys(pinnedSector ?? controls.sector, controls.satellite);
+    const propertyKeys       = emissionsPropertyKeys(cellVariables, controls.sector, controls.satellite);
+    const domainPropertyKeys = emissionsPropertyKeys(cellVariables, pinnedSector ?? controls.sector, controls.satellite);
     const rawDomainMax       = domainMaxFor(featuresRef.current, domainPropertyKeys);
     const scaleMax           = controls.colorScaleMax ?? 1.0;
     styleRef.current.propertyKeys = propertyKeys;
@@ -1092,7 +1034,7 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
       );
       if (!hit) { setHover(null); return; }
 
-      const propertyKeys = emissionsPropertyKeys(controls.sector, controls.satellite);
+      const propertyKeys = emissionsPropertyKeys(cellVariables, controls.sector, controls.satellite);
       const value = readEmissions(hit.properties, propertyKeys);
 
       // The file's grid and the ensemble's grid are both the native
@@ -1316,66 +1258,49 @@ export function MapView() {
 
   const isPeriodGrid = activeDataset.gridType === 'period';
 
-  // ── TIF URL (CONUS / permian-weekly grid mode) ────────────────────────────
-  const tifUrl = useMemo(() => {
-    if (!baseData?.manifest || !isGridMode) return null;
-    const entry = isPeriodGrid
-      ? getPeriodManifestEntry(baseData.manifest, controls.satellite, controls.sector, controls.period)
-      : getManifestEntry(baseData.manifest, controls.sector, controls.year, controls.satellite);
-    return entry?.tif ? resolveTifUrl(dataRoot ?? '', entry.tif) : null;
-  }, [
-    baseData?.manifest, controls.viewMode, controls.sector, isPeriodGrid,
-    controls.year, controls.satellite, controls.period, dataRoot,
-  ]);
-
-  // ── Ensemble min/max URLs (posterior hover uncertainty, CONUS grid mode) ──
+  // ── TIF files (CONUS / permian-weekly grid mode) ──────────────────────────
+  // minTif/maxTif are the posterior ensemble bounds behind the hover range.
   // Only populated for posterior years in manifest.json -- absent for
   // "_prior" (GHGI has no ensemble) and for period-keyed manifests (permian
   // weekly has no ensemble rasters), so these resolve to null there.
-  const minTifUrl = useMemo(() => {
-    if (!baseData?.manifest || !isGridMode || isPeriodGrid) return null;
-    const entry = getManifestEntry(
-      baseData.manifest, controls.sector, controls.year, controls.satellite,
-    );
-    return entry?.minTif ? resolveTifUrl(dataRoot ?? '', entry.minTif) : null;
-  }, [baseData?.manifest, controls.sector, controls.year, controls.satellite, isPeriodGrid, dataRoot]);
+  const manifest = baseData?.manifest;
+  const tifFiles = useMemo(() => {
+    if (!manifest || !isGridMode) return null;
+    const entry = isPeriodGrid
+      ? getPeriodManifestEntry(manifest, controls.satellite, controls.sector, controls.period)
+      : getManifestEntry(manifest, controls.sector, controls.year, controls.satellite);
+    const resolve = path => (path ? resolveTifUrl(dataRoot ?? '', path) : null);
+    return {
+      tif:    resolve(entry?.tif),
+      minTif: isPeriodGrid ? null : resolve(entry?.minTif),
+      maxTif: isPeriodGrid ? null : resolve(entry?.maxTif),
+    };
+  }, [
+    manifest, isGridMode, isPeriodGrid, controls.sector,
+    controls.year, controls.satellite, controls.period, dataRoot,
+  ]);
 
-  const maxTifUrl = useMemo(() => {
-    if (!baseData?.manifest || !isGridMode || isPeriodGrid) return null;
-    const entry = getManifestEntry(
-      baseData.manifest, controls.sector, controls.year, controls.satellite,
-    );
-    return entry?.maxTif ? resolveTifUrl(dataRoot ?? '', entry.maxTif) : null;
-  }, [baseData?.manifest, controls.sector, controls.year, controls.satellite, isPeriodGrid, dataRoot]);
+  const minGeoraster = useGeoraster(tifFiles?.minTif ?? null);
+  const maxGeoraster = useGeoraster(tifFiles?.maxTif ?? null);
 
-  const minGeoraster = useGeoraster(minTifUrl);
-  const maxGeoraster = useGeoraster(maxTifUrl);
-
-  // ── JSON grid file path (Colombia grid mode) ──────────────────────────────
-  const jsonGridFilePath = useMemo(() => {
+  // ── JSON grid files (Colombia grid mode) ──────────────────────────────────
+  // `uncertainty` backs the posterior hover range. `pinned` is fetched
+  // independently of controls.sector so the color scale can stay pinned to
+  // the Total sector's own max instead of rescaling per sector.
+  const jsonFiles = useMemo(() => {
     if (!isGridMode || activeDataset.gridType !== 'json') return null;
-    return baseData?.gridFiles?.[controls.year]?.[controls.sector] ?? null;
-  }, [isGridMode, activeDataset.gridType, baseData, controls.year, controls.sector]);
-
-  // ── JSON grid uncertainty file path (posterior hover uncertainty, Colombia) ─
-  const jsonUncertaintyFilePath = useMemo(() => {
-    if (!isGridMode || activeDataset.gridType !== 'json') return null;
-    return baseData?.gridUncertaintyFiles?.[controls.year]?.[controls.sector] ?? null;
-  }, [isGridMode, activeDataset.gridType, baseData, controls.year, controls.sector]);
-
-  const jsonMinMax = useJsonMinMax(jsonUncertaintyFilePath);
-
-  // ── Pinned-sector grid file path (Colombia grid mode) ─────────────────────
-  // Fetched independently of controls.sector so the color scale can stay
-  // pinned to the Total sector's own max instead of rescaling per sector.
-  const pinnedGridFilePath = useMemo(() => {
-    if (!isGridMode || activeDataset.gridType !== 'json') return null;
+    const filesForYear     = baseData?.gridFiles?.[controls.year];
     const pinnedGridSector = display.colorScale?.pinnedGridSector;
-    if (!pinnedGridSector) return null;
-    return baseData?.gridFiles?.[controls.year]?.[pinnedGridSector] ?? null;
-  }, [isGridMode, activeDataset.gridType, baseData, controls.year, display.colorScale]);
+    return {
+      grid:        filesForYear?.[controls.sector] ?? null,
+      uncertainty: baseData?.gridUncertaintyFiles?.[controls.year]?.[controls.sector] ?? null,
+      pinned:      pinnedGridSector ? filesForYear?.[pinnedGridSector] ?? null : null,
+    };
+  }, [isGridMode, activeDataset.gridType, baseData, controls.year, controls.sector, display.colorScale]);
 
-  const fetchedPinnedGridMax = useJsonGridMax(pinnedGridFilePath);
+  const jsonMinMax = useJsonMinMax(jsonFiles?.uncertainty ?? null);
+
+  const fetchedPinnedGridMax = useJsonGridMax(jsonFiles?.pinned ?? null);
   useEffect(() => {
     setPinnedGridMax(fetchedPinnedGridMax);
   }, [fetchedPinnedGridMax, setPinnedGridMax]);
@@ -1383,8 +1308,65 @@ export function MapView() {
   // ── Per-country masked grid file path (ch4-global) ────────────────────────
   const countryGridFilePath = useMemo(() => {
     if (activeDataset.gridType !== 'country-mask' || !selectedState) return null;
-    return `${import.meta.env.BASE_URL}data/ch4_global/country_sectors/${encodeURIComponent(selectedState.replace(/ /g, '_'))}_masked.json`;
-  }, [activeDataset.gridType, selectedState]);
+    return activeDataset.countryGrid.cellsUrl(controls.year, selectedState);
+  }, [activeDataset.gridType, activeDataset.countryGrid, controls.year, selectedState]);
+
+  // ── Active grid layer (grid mode) ─────────────────────────────────────────
+  // The TIF and JSON renderers are shared between the built-in datasets and
+  // an upload, so everything that differs between them — the file, its cell
+  // metadata, ensemble bounds, units — is resolved once here and the JSX
+  // below just has one branch per kind. ch4-global's per-country grid isn't
+  // one of these: it overlays the choropleth rather than replacing it.
+  //
+  // `reportsRawMax` marks layers whose color domain comes from their own data
+  // (Colombia until its pinned max loads, and uploads) rather than from a
+  // manifest's precomputed max — they feed jsonGridDomain, which the Legend
+  // also reads, so the manifest-backed TIFs must leave it alone.
+  const gridLayer = useMemo(() => {
+    if (!isGridMode) return null;
+    const units = display.legendUnits ?? display.units;
+
+    if (activeDataset.gridType === 'upload') {
+      if (!activeUploadSector) return null;
+      return {
+        kind:          uploadedData.kind,
+        url:           activeUploadSector.url,
+        gridMeta:      activeUploadSector.gridMeta,
+        units:         uploadedData.meta?.units || units,
+        reportsRawMax: true,
+      };
+    }
+    if (activeDataset.gridType === 'json') {
+      if (!jsonFiles?.grid) return null;
+      return {
+        kind:          'json',
+        url:           jsonFiles.grid,
+        gridMeta:      baseData.gridMeta,
+        min:           jsonMinMax?.min,
+        max:           jsonMinMax?.max,
+        units,
+        reportsRawMax: true,
+      };
+    }
+    if (!tifFiles?.tif) return null;
+    return {
+      kind:          'tif',
+      url:           tifFiles.tif,
+      min:           minGeoraster,
+      max:           maxGeoraster,
+      units,
+      reportsRawMax: false,
+    };
+  }, [
+    isGridMode, activeDataset.gridType, display.legendUnits, display.units,
+    activeUploadSector, uploadedData, jsonFiles, baseData, jsonMinMax,
+    tifFiles, minGeoraster, maxGeoraster,
+  ]);
+
+  const reportRawMax = useCallback(
+    (max) => setJsonGridDomain(max != null ? { min: 0, max } : null),
+    [setJsonGridDomain],
+  );
 
   // ── Raster/grid domain ────────────────────────────────────────────────────
   // Grid views pin their domain to the dataset's Total sector (see
@@ -1524,16 +1506,6 @@ export function MapView() {
         {/* Creates its own labelPane and keeps place names above the data */}
         <VectorBasemap />
 
-        {/* Grid hover tooltip — TIF mode only */}
-        {isGridMode && (!activeDataset.gridType || isPeriodGrid) && (
-          <GridHoverLayer
-            georaster={activeGeoRaster}
-            minGeoraster={minGeoraster}
-            maxGeoraster={maxGeoraster}
-            units={display.legendUnits ?? display.units}
-          />
-        )}
-
         {/* Choropleth — keyed by dataset so GeoJSON remounts on dataset switch */}
         {!isGridMode && baseData?.statesGeoJSON && (
           <ChoroplethLayer
@@ -1569,93 +1541,49 @@ export function MapView() {
           />
         )}
 
-        {/* TIF raster (CONUS / permian-weekly) */}
-        {isGridMode && (!activeDataset.gridType || isPeriodGrid) && tifUrl && (
-          <RasterLayer
-            key={tifUrl}
-            tifUrl={tifUrl}
-            domainMin={rasterDomain.min}
-            domainMax={rasterDomain.max}
-            colorStops={colorStops}
-            opacity={controls.opacity ?? 0.7}
-            onGeoRasterReady={setActiveGeoRaster}
-          />
+        {/* TIF raster + hover tooltip (CONUS / permian-weekly / uploaded TIF) */}
+        {gridLayer?.kind === 'tif' && (
+          <>
+            <GridHoverLayer
+              georaster={activeGeoRaster}
+              minGeoraster={gridLayer.min}
+              maxGeoraster={gridLayer.max}
+              units={gridLayer.units}
+            />
+            <RasterLayer
+              key={gridLayer.url}
+              tifUrl={gridLayer.url}
+              domainMin={rasterDomain.min}
+              domainMax={rasterDomain.max}
+              colorStops={colorStops}
+              opacity={controls.opacity ?? 0.7}
+              onGeoRasterReady={setActiveGeoRaster}
+              onRawMaxReady={gridLayer.reportsRawMax ? reportRawMax : undefined}
+            />
+          </>
         )}
 
-        {/* JSON polygon grid (Colombia) */}
-        {isGridMode && activeDataset.gridType === 'json' && jsonGridFilePath && (
-          <JsonGridLayer
-            key={jsonGridFilePath}
-            gridMeta={baseData.gridMeta}
-            filePath={jsonGridFilePath}
-            domainMax={rasterDomain.max}
-            colorStops={colorStops}
-            opacity={controls.opacity ?? 0.65}
-            onRawMaxReady={(max) =>
-              setJsonGridDomain(max != null ? { min: 0, max } : null)
-            }
-            onValuesReady={setActiveJsonGridValues}
-          />
-        )}
-
-        {/* JSON grid hover tooltip (Colombia) */}
-        {isGridMode && activeDataset.gridType === 'json' && (
-          <JsonGridHoverLayer
-            gridMeta={baseData?.gridMeta}
-            values={activeJsonGridValues}
-            minValues={jsonMinMax?.min}
-            maxValues={jsonMinMax?.max}
-            units={display.legendUnits ?? display.units}
-          />
-        )}
-
-        {/* Uploaded raster (TIF) */}
-        {isGridMode && activeDataset.gridType === 'upload' && uploadedData?.kind === 'tif' && activeUploadSector && (
-          <RasterLayer
-            key={activeUploadSector.url}
-            tifUrl={activeUploadSector.url}
-            domainMin={rasterDomain.min}
-            domainMax={rasterDomain.max}
-            colorStops={colorStops}
-            opacity={controls.opacity ?? 0.7}
-            onGeoRasterReady={setActiveGeoRaster}
-            onRawMaxReady={(max) =>
-              setJsonGridDomain(max != null ? { min: 0, max } : null)
-            }
-          />
-        )}
-
-        {/* Uploaded raster hover tooltip */}
-        {isGridMode && activeDataset.gridType === 'upload' && uploadedData?.kind === 'tif' && (
-          <GridHoverLayer
-            georaster={activeGeoRaster}
-            units={uploadedData.meta?.units || (display.legendUnits ?? display.units)}
-          />
-        )}
-
-        {/* Uploaded JSON polygon grid */}
-        {isGridMode && activeDataset.gridType === 'upload' && uploadedData?.kind === 'json' && activeUploadSector && (
-          <JsonGridLayer
-            key={activeUploadSector.url}
-            gridMeta={activeUploadSector.gridMeta}
-            filePath={activeUploadSector.url}
-            domainMax={rasterDomain.max}
-            colorStops={colorStops}
-            opacity={controls.opacity ?? 0.7}
-            onRawMaxReady={(max) =>
-              setJsonGridDomain(max != null ? { min: 0, max } : null)
-            }
-            onValuesReady={setActiveJsonGridValues}
-          />
-        )}
-
-        {/* Uploaded JSON grid hover tooltip */}
-        {isGridMode && activeDataset.gridType === 'upload' && uploadedData?.kind === 'json' && (
-          <JsonGridHoverLayer
-            gridMeta={activeUploadSector?.gridMeta}
-            values={activeJsonGridValues}
-            units={uploadedData.meta?.units || (display.legendUnits ?? display.units)}
-          />
+        {/* JSON polygon grid + hover tooltip (Colombia / uploaded JSON) */}
+        {gridLayer?.kind === 'json' && (
+          <>
+            <JsonGridLayer
+              key={gridLayer.url}
+              gridMeta={gridLayer.gridMeta}
+              filePath={gridLayer.url}
+              domainMax={rasterDomain.max}
+              colorStops={colorStops}
+              opacity={controls.opacity ?? 0.7}
+              onRawMaxReady={gridLayer.reportsRawMax ? reportRawMax : undefined}
+              onValuesReady={setActiveJsonGridValues}
+            />
+            <JsonGridHoverLayer
+              gridMeta={gridLayer.gridMeta}
+              values={activeJsonGridValues}
+              minValues={gridLayer.min}
+              maxValues={gridLayer.max}
+              units={gridLayer.units}
+            />
+          </>
         )}
 
         {/* Region borders (grid mode) — keyed by dataset + selection */}

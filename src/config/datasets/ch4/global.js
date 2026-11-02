@@ -7,19 +7,23 @@ const YEAR = 2023; // only year available for this dataset
 const CSV_URL = 'data/ch4_global/website_data_withranges_withnatural.csv';
 
 // ─── Single source of truth for this dataset's sectors ───────────────────────
-// The map's Sector dropdown, the Sector Breakdown bars and dataLoader's column
-// mapping all derive from this table. The keys are also what MapView
-// translates into grid/ensemble variable names, so renaming one here means
-// updating CONTROL_SECTOR_TO_FILE_KEYS / NATIVE_SECTOR_TO_CONTROL there too.
+// The map's Sector dropdown, the Sector Breakdown bars, dataLoader's column
+// mapping and the gridded overlay's variable mapping (`countryGrid` below) all
+// derive from this table.
 //
-//   key    internal sector key; also the Sector dropdown's value
-//   label  user-facing text, shared by the dropdown and the bar chart
-//   csv    column prefix(es) in CSV_URL — an array is summed
-//   unc    column prefix for the `_post_min`/`_post_max` uncertainty deltas,
-//          defaulting to `csv`
-//   group  which category the sector belongs to. Nothing reads it yet; it's
-//          here so the anthropogenic/natural split is stated once, in the
-//          same place as the arithmetic that depends on it.
+//   key       internal sector key; also the Sector dropdown's value
+//   label     user-facing text, shared by the dropdown and the bar chart
+//   csv       column prefix(es) in CSV_URL — an array is summed
+//   unc       column prefix for the `_post_min`/`_post_max` uncertainty deltas,
+//             defaulting to `csv`
+//   grid      native variable name(s) in the gridded products — the
+//             country_sectors cells' `emissions_<name>_<post|prior>` and the
+//             ensemble file's `EmisCH4_<name>_post` — defaulting to `key`. An
+//             array is summed cell by cell.
+//   ensemble  overrides `grid` for the ensemble file only, where a name differs
+//   group     which category the sector belongs to. Nothing reads it yet; it's
+//             here so the anthropogenic/natural split is stated once, in the
+//             same place as the arithmetic that depends on it.
 //
 // `unc` exists as its own field because the file's totals carry *propagated*
 // deltas that are genuinely narrower than the sum of their components'
@@ -33,25 +37,31 @@ const CSV_URL = 'data/ch4_global/website_data_withranges_withnatural.csv';
 // knowable from the source data: `Other` is a leaf column in every file we
 // have rather than an aggregate, so there is nothing to enumerate for it.
 
-// The includes: excludes: keys for the total columns govern the text for the 
+// The includes: excludes: keys for the total columns govern the text for the
 // popup in the sector bar chart.
 const SECTORS = [
+  // The cells' precomputed `Total` and the ensemble's native `Total_Excl_Soil`
+  // both match the CSV's definition (everything but soil), so neither needs
+  // summing — and the ensemble's needs no worst-case bound approximation.
   { key: 'Total',       label: 'Total (all sources)', csv: 'Total',                        group: 'total',
+    grid: 'Total', ensemble: 'Total_Excl_Soil',
     includes: [' all anthropogenic and natural sources', 'excludes soil absorption. Error bars show the range from the inversion ensemble.'] },
   // Biomass burning is *not* in here: it's grouped with the natural sources
-  // below. 
-  // (The gridded products still count biomass burning as
-  // anthropogenic in their precomputed `TotalAnth`, so MapView re-sums the
-  // per-cell components instead of reading that aggregate — see
-  // TOTAL_ANTH_SECTORS there.)
+  // below. The gridded products still count it as anthropogenic in their
+  // precomputed `TotalAnth`, so `grid` re-sums the components rather than
+  // reading that aggregate. Regenerating the files with biomass burning
+  // moved would let this go back to a single `TotalAnth`.
   { key: 'TotalAnth',   label: 'Total anthropogenic', csv: 'AnthroTotal',                  group: 'total',
+    grid: ['Coal', 'Landfills', 'Livestock', 'OG', 'OtherAnth', 'Rice', 'Wastewater', 'Reservoirs'],
     includes: ['livestock', 'oil & gas', 'coal', 'rice', 'waste', 'reservoirs',
                'other anthropogenic'] },
   { key: 'Livestock',   label: 'Livestock',           csv: 'Livestock',                    group: 'anthro'  },
-  { key: 'OilAndGas',   label: 'Oil & gas',           csv: 'Oil-Gas',                      group: 'anthro'  },
+  { key: 'OilAndGas',   label: 'Oil & gas',           csv: 'Oil-Gas',     grid: 'OG',      group: 'anthro'  },
   { key: 'Coal',        label: 'Coal',                csv: 'Coal',                         group: 'anthro'  },
   { key: 'Rice',        label: 'Rice cultivation',    csv: 'Rice',                         group: 'anthro'  },
+  // The CSV only has landfills and wastewater merged; the grids keep them apart.
   { key: 'Waste',       label: 'Waste',               csv: 'Waste',                        group: 'anthro',
+    grid: ['Landfills', 'Wastewater'],
     includes: ['landfills', 'wastewater'] },
   { key: 'Reservoirs',  label: 'Reservoirs',          csv: 'Reservoirs',                   group: 'anthro'  },
   { key: 'OtherAnth',   label: 'Other anthropogenic', csv: 'Other',                        group: 'anthro'  },
@@ -61,6 +71,7 @@ const SECTORS = [
   // values are very small. Greater accuracy requires ensemble-member summing & recalculating bounds
   // but we don't have the ensemble data.
   { key: 'Natural',     label: 'Other Natural',       csv: ['Termites', 'Seeps'],          group: 'natural',
+    grid: ['Termites', 'Seeps'],
     includes: ['termites', 'seeps'] },
 ];
 
@@ -96,6 +107,28 @@ const BAR_SECTORS = SECTORS
 const BAR_CHART_HEIGHT = ANTHRO_ONLY_BARS ? 500 : 620;
 
 const asArray = v => (Array.isArray(v) ? v : [v]);
+
+// ─── Gridded overlay (MapView's CountryGridLayer) ────────────────────────────
+// Everything MapView needs to draw a clicked country's grid and its hover
+// ranges. The URLs take the year so a multi-year rework only has to change
+// them here; for now there's one year and `year` is unused.
+//
+// Aggregate sectors' ensemble min/max are summed element-wise from their
+// components, the same composition as the central value. That's a worst-case
+// bound (every component erring the same way at once), not a statistical
+// propagation — fine for a hover tooltip.
+const COUNTRY_GRID = {
+  cellsUrl: (_year, country) =>
+    `${import.meta.env.BASE_URL}data/ch4_global/country_sectors/${encodeURIComponent(country.replace(/ /g, '_'))}_masked.json`,
+  // One gzipped JSON covering the whole world, every sector at once —
+  // posterior only, since no ensemble exists for the bottom-up estimate.
+  ensembleUrl: (/* year */) => `${import.meta.env.BASE_URL}data/ch4_global/ensemble_minmax.json.gz`,
+  // The ensemble file is Gg/yr per cell; the country_sectors cells are Tg/yr.
+  ensembleMassUnit: 'Gg',
+  // Sector key -> native variable names to sum, per gridded product.
+  cellVariables:     Object.fromEntries(SECTORS.map(s => [s.key, asArray(s.grid ?? s.key)])),
+  ensembleVariables: Object.fromEntries(SECTORS.map(s => [s.key, asArray(s.ensemble ?? s.grid ?? s.key)])),
+};
 
 // Sums one sector's column prefixes for a given suffix. Returns null only when
 // every component is missing, so a present-but-zero component still yields 0
@@ -142,6 +175,7 @@ registerDataset({
 
   reloadTrigger: [],       // load all data once on dataset mount
   gridType: 'country-mask', // signals MapView to overlay a per-country masked grid on click
+  countryGrid:  COUNTRY_GRID, // that grid's file URLs and sector -> variable mapping
   nameAliases:  ADMIN_ALIASES, // alternative spellings the ?country= param accepts
   viewOverrides: COUNTRY_VIEWS, // per-country framing, where the automatic fit is wrong
 
