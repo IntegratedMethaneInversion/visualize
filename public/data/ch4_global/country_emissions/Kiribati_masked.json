@@ -1,8 +1,0 @@
-{
-"type": "FeatureCollection",
-"name": "Kiribati_masked",
-"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
-"features": [
-{ "type": "Feature", "properties": { "emissions": 0.00025377744723451142 }, "geometry": { "type": "Polygon", "coordinates": [ [ [ -157.607428938242066, 2.123009869719767 ], [ -157.607428938242066, 1.873338935651752 ], [ -157.294974142928453, 1.873338935651752 ], [ -157.294974142928453, 2.123009869719767 ], [ -157.607428938242066, 2.123009869719767 ] ] ] } }
-]
-}

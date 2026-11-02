@@ -1,8 +1,0 @@
-{
-"type": "FeatureCollection",
-"name": "Comoros_masked",
-"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
-"features": [
-{ "type": "Feature", "properties": { "emissions": 0.0001128547610842679 }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 43.30100444838974, -11.782656660943802 ], [ 43.30100444838974, -12.027106158492188 ], [ 43.613459243703318, -12.027106158492188 ], [ 43.613459243703318, -11.782656660943802 ], [ 43.30100444838974, -11.782656660943802 ] ] ] } }
-]
-}
