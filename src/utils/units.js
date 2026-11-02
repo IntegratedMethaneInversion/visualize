@@ -41,17 +41,18 @@ export function formatDisplayUnit(massUnit, timeSuffix) {
 
 // Shared number formatting for any displayed mass value, regardless of which
 // unit it's currently in — a Tg total, a Gg/week weekly sum, or a single
-// grid cell's Tons/yr share all need the same adaptive precision: compact
-// notation once values run into the thousands (an unconverted Tons total
-// can be 9+ digits), more decimals for the fractional values a raw Tg grid
-// cell or Colombia sub-national total can be.
+// grid cell's Tons/yr share: compact notation once values run into the
+// thousands (an unconverted Tons total can be 9+ digits), otherwise two
+// decimal places. A nonzero value that would round to 0.00 shows as <0.01
+// instead, so it doesn't read as a true zero — switching to a smaller unit is
+// the way to see its actual size.
 export function formatMassValue(v) {
   if (v == null || !Number.isFinite(v)) return '—';
   const abs = Math.abs(v);
   if (abs >= 1000) {
     return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(v);
   }
-  if (abs > 0 && abs < 1) return v.toFixed(5);
+  if (abs > 0 && abs < 0.005) return v > 0 ? '<0.01' : '>-0.01';
   return v.toFixed(2);
 }
 
