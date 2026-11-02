@@ -1,8 +1,0 @@
-{
-"type": "FeatureCollection",
-"name": "Malta_masked",
-"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
-"features": [
-{ "type": "Feature", "properties": { "emissions": 0.0010626942122320354 }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 14.24270848422681, 35.971291307576337 ], [ 14.24270848422681, 35.768847961995142 ], [ 14.555163279540391, 35.768847961995142 ], [ 14.555163279540391, 35.971291307576337 ], [ 14.24270848422681, 35.971291307576337 ] ] ] } }
-]
-}

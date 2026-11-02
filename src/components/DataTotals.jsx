@@ -3,7 +3,7 @@ import { useDatasetContext } from '../context/DatasetContext';
 import { useEmissionData }   from '../hooks/useEmissionData';
 import { useDisplayUnit }    from '../hooks/useDisplayUnit';
 import { formatMassValue, formatRange, boundsFromDeltas } from '../utils/units';
-import { parseNumber }       from '../utils/emissionsUtils';
+import { parseNumber, rangesForYear } from '../utils/emissionsUtils';
 import { PERMIAN_TOTAL_VARIABLE, getPeriodAnthroTotal } from '../utils/manifestUtils';
 
 const SUPPORTED = new Set(['ch4-conus', 'ch4-colombia', 'ch4-global', 'ch4-permian-weekly']);
@@ -159,9 +159,8 @@ export function DataTotals() {
   // burning, Other Natural) — a worst-case widening, the same caveat as the
   // Other Natural bar. (Those three are exactly Total - AnthroTotal per
   // country, so the central value here matches naturalPost.)
-  const rangeEntry = activeDataset.id === 'ch4-global'
-    ? (isState ? baseData.sectorRanges?.byCountry?.[selectedState] : baseData.sectorRanges?.world)
-    : null;
+  const yearRanges = activeDataset.id === 'ch4-global' ? rangesForYear(baseData.sectorRanges, year) : null;
+  const rangeEntry = isState ? yearRanges?.byCountry?.[selectedState] : yearRanges?.world;
   const sumDeltas = (field, keys) => {
     const parts = keys.map(k => rangeEntry?.[k]?.[field]);
     return parts.some(v => v == null) ? null : parts.reduce((a, b) => a + b, 0);

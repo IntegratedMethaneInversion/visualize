@@ -1,10 +1,15 @@
 import { registerDataset }         from '../../datasetRegistry';
 import { fetchCSV, parseNumber }   from '../../../utils/emissionsUtils';
 import { COUNTRY_VIEWS }           from './countryViews';
+import GLOBAL_YEARS                from './globalYears.json';
 
-const YEAR = 2023; // only year available for this dataset
+// globalYears.json is the single list of built years — the build script
+// (scripts/build_ch4_global.py) appends to it — and each one has its own
+// public/data/ch4_global/<year>/ folder. Defaults to the latest.
+const YEARS        = [...GLOBAL_YEARS.years].sort();
+const DEFAULT_YEAR = YEARS.at(-1);
 
-const CSV_URL = 'data/ch4_global/website_data_withranges_withnatural.csv';
+const csvUrl = year => `${import.meta.env.BASE_URL}data/ch4_global/${year}/countries.csv`;
 
 // ─── Single source of truth for this dataset's sectors ───────────────────────
 // The map's Sector dropdown, the Sector Breakdown bars, dataLoader's column
@@ -13,14 +18,12 @@ const CSV_URL = 'data/ch4_global/website_data_withranges_withnatural.csv';
 //
 //   key       internal sector key; also the Sector dropdown's value
 //   label     user-facing text, shared by the dropdown and the bar chart
-//   csv       column prefix(es) in CSV_URL — an array is summed
+//   csv       column prefix(es) in each year's countries.csv — an array is summed
 //   unc       column prefix for the `_post_min`/`_post_max` uncertainty deltas,
 //             defaulting to `csv`
-//   grid      native variable name(s) in the gridded products — the
-//             country_sectors cells' `emissions_<name>_<post|prior>` and the
-//             ensemble file's `EmisCH4_<name>_post` — defaulting to `key`. An
-//             array is summed cell by cell.
-//   ensemble  overrides `grid` for the ensemble file only, where a name differs
+//   grid      native sector name(s) in the per-country grid files, defaulting
+//             to `key`. An array is summed cell by cell, for the central value
+//             and the ensemble min/max alike.
 //   group     which category the sector belongs to. Nothing reads it yet; it's
 //             here so the anthropogenic/natural split is stated once, in the
 //             same place as the arithmetic that depends on it.
@@ -40,17 +43,15 @@ const CSV_URL = 'data/ch4_global/website_data_withranges_withnatural.csv';
 // The includes: excludes: keys for the total columns govern the text for the
 // popup in the sector bar chart.
 const SECTORS = [
-  // The cells' precomputed `Total` and the ensemble's native `Total_Excl_Soil`
-  // both match the CSV's definition (everything but soil), so neither needs
-  // summing — and the ensemble's needs no worst-case bound approximation.
+  // The grid files' own `Total` matches the CSV's definition (everything but
+  // soil), so it needs no summing — and its min/max no worst-case bound
+  // approximation.
   { key: 'Total',       label: 'Total (all sources)', csv: 'Total',                        group: 'total',
-    grid: 'Total', ensemble: 'Total_Excl_Soil',
+    grid: 'Total',
     includes: [' all anthropogenic and natural sources', 'excludes soil absorption. Error bars show the range from the inversion ensemble.'] },
   // Biomass burning is *not* in here: it's grouped with the natural sources
-  // below. The gridded products still count it as anthropogenic in their
-  // precomputed `TotalAnth`, so `grid` re-sums the components rather than
-  // reading that aggregate. Regenerating the files with biomass burning
-  // moved would let this go back to a single `TotalAnth`.
+  // below. The grid files carry no precomputed `TotalAnth`, so `grid` sums the
+  // components.
   { key: 'TotalAnth',   label: 'Total anthropogenic', csv: 'AnthroTotal',                  group: 'total',
     grid: ['Coal', 'Landfills', 'Livestock', 'OG', 'OtherAnth', 'Rice', 'Wastewater', 'Reservoirs'],
     includes: ['livestock', 'oil & gas', 'coal', 'rice', 'waste', 'reservoirs',
@@ -110,24 +111,19 @@ const asArray = v => (Array.isArray(v) ? v : [v]);
 
 // ─── Gridded overlay (MapView's CountryGridLayer) ────────────────────────────
 // Everything MapView needs to draw a clicked country's grid and its hover
-// ranges. The URLs take the year so a multi-year rework only has to change
-// them here; for now there's one year and `year` is unused.
+// ranges. Each country/year is one gzipped `ch4-global-country-grid/1` file
+// (see public/data/ch4_global/README.md) carrying the posterior, prior and
+// ensemble min/max for every native sector, all in Tg/yr per cell.
 //
 // Aggregate sectors' ensemble min/max are summed element-wise from their
 // components, the same composition as the central value. That's a worst-case
 // bound (every component erring the same way at once), not a statistical
 // propagation — fine for a hover tooltip.
 const COUNTRY_GRID = {
-  cellsUrl: (_year, country) =>
-    `${import.meta.env.BASE_URL}data/ch4_global/country_sectors/${encodeURIComponent(country.replace(/ /g, '_'))}_masked.json`,
-  // One gzipped JSON covering the whole world, every sector at once —
-  // posterior only, since no ensemble exists for the bottom-up estimate.
-  ensembleUrl: (/* year */) => `${import.meta.env.BASE_URL}data/ch4_global/ensemble_minmax.json.gz`,
-  // The ensemble file is Gg/yr per cell; the country_sectors cells are Tg/yr.
-  ensembleMassUnit: 'Gg',
-  // Sector key -> native variable names to sum, per gridded product.
-  cellVariables:     Object.fromEntries(SECTORS.map(s => [s.key, asArray(s.grid ?? s.key)])),
-  ensembleVariables: Object.fromEntries(SECTORS.map(s => [s.key, asArray(s.ensemble ?? s.grid ?? s.key)])),
+  cellsUrl: (year, country) =>
+    `${import.meta.env.BASE_URL}data/ch4_global/${year}/grid/${encodeURIComponent(country.replace(/ /g, '_'))}.json.gz`,
+  // Sector key -> native variable names to sum.
+  cellVariables: Object.fromEntries(SECTORS.map(s => [s.key, asArray(s.grid ?? s.key)])),
 };
 
 // Sums one sector's column prefixes for a given suffix. Returns null only when
@@ -159,11 +155,84 @@ export const ADMIN_ALIASES = {
   'Congo': 'Republic of the Congo',
 };
 
+// Turns one year's countries.csv rows into the per-country and world-total
+// structures dataLoader returns for that year.
+function parseCountriesCsv(csvRows) {
+  const rows            = {};
+  const priorBare       = {};
+  const worldPrior      = {};
+  const worldPosterior  = {};
+  const rangesByCountry = {};
+  // `world` row for the Sector Breakdown chart when no country is selected.
+  // Its deltas are summed across countries, which — like `Natural` above —
+  // is the worst case rather than a propagation; the file has no world row
+  // to read a propagated figure from.
+  const rangesWorld     = {};
+
+  const addTo = (acc, key, v) => {
+    if (v == null) return;
+    acc[key] = (acc[key] ?? 0) + v;
+  };
+
+  for (const raw of csvRows) {
+    const csvName = raw.countries?.trim();
+    if (!csvName) continue;
+    const name = ADMIN_ALIASES[csvName] ?? csvName;
+
+    // rows (byYear): both suffixes present, so the choropleth can color in
+    // either Data Source mode (see computeChoroplethDomain / centralCol).
+    const row      = {};
+    // priorBare (stateByYearPrior): bare keys, prior only — the bottom-up
+    // column of the 2x2 totals table reads this.
+    const priorRow = {};
+    // sectorRanges: per-sector central values + uncertainty deltas, for the
+    // Sector Breakdown chart and the country hover tooltip.
+    const bySector = {};
+
+    for (const s of SECTORS) {
+      const csvPrefixes = asArray(s.csv);
+      const uncPrefixes = asArray(s.unc ?? s.csv);
+
+      const prior    = sumColumns(raw, csvPrefixes, '_prior');
+      const post     = sumColumns(raw, csvPrefixes, '_post');
+      const minDelta = sumColumns(raw, uncPrefixes, '_post_min');
+      const maxDelta = sumColumns(raw, uncPrefixes, '_post_max');
+
+      row[`${s.key}_prior`]     = prior;
+      row[`${s.key}_posterior`] = post;
+      priorRow[s.key]           = prior;
+      bySector[s.key]           = { prior, post, minDelta, maxDelta };
+
+      addTo(worldPrior,     s.key, prior);
+      addTo(worldPosterior, s.key, post);
+
+      const sums = rangesWorld[s.key]
+        ?? (rangesWorld[s.key] = { prior: null, post: null, minDelta: null, maxDelta: null });
+      if (prior    != null) sums.prior    = (sums.prior    ?? 0) + prior;
+      if (post     != null) sums.post     = (sums.post     ?? 0) + post;
+      if (minDelta != null) sums.minDelta = (sums.minDelta ?? 0) + minDelta;
+      if (maxDelta != null) sums.maxDelta = (sums.maxDelta ?? 0) + maxDelta;
+    }
+
+    rows[name]      = row;
+    priorBare[name] = priorRow;
+    // Keyed on the ADMIN name, matching selectedState — the choropleth and
+    // the bar chart/tooltip lookups all go through the same alias.
+    rangesByCountry[name] = bySector;
+  }
+
+  return {
+    rows, priorBare, worldPrior, worldPosterior,
+    ranges: { byCountry: rangesByCountry, world: rangesWorld },
+  };
+}
+
 registerDataset({
   id:     'ch4-global',
   family: 'CH4',
   name:         'Global methane emissions',   // big title on the dashboard
-  dropdownName: 'Global - East et al., 2023',   // label in the Dataset dropdown
+  // TODO(user): confirm wording
+  dropdownName: 'Global - East et al.',   // label in the Dataset dropdown
   description: 'Annual methane emissions by country at 25-km resolution generated \
   with the IMI using TROPOMI satellite data combined with bottom-up information from \
   national BTRs. Values in parentheses and error bars are the confidence range from the \
@@ -210,8 +279,8 @@ registerDataset({
       key:     'year',
       label:   'Year',
       type:    'select',
-      options: [{ value: YEAR, label: String(YEAR) }],
-      default: YEAR,
+      options: YEARS.map(y => ({ value: y, label: String(y) })),
+      default: DEFAULT_YEAR,
     },
     {
       key:     'opacity',
@@ -265,84 +334,38 @@ registerDataset({
   },
 
   async dataLoader() {
-    const [rows, countriesGeoJSON] = await Promise.all([
-      fetchCSV(`${import.meta.env.BASE_URL}${CSV_URL}`),
+    const [yearRows, countriesGeoJSON] = await Promise.all([
+      Promise.all(YEARS.map(year => fetchCSV(csvUrl(year)))),
       fetch(`${import.meta.env.BASE_URL}data/world-countries.json`).then(r => {
         if (!r.ok) throw new Error(`world-countries.json: HTTP ${r.status}`);
         return r.json();
       }),
     ]);
 
-    const byYear           = { [YEAR]: {} };
-    const stateByYearPrior = { [YEAR]: {} };
-    const worldPrior       = {};
-    const worldPosterior   = {};
-    const rangesByCountry  = {};
-    // `world` row for the Sector Breakdown chart when no country is selected.
-    // Its deltas are summed across countries, which — like `Natural` above —
-    // is the worst case rather than a propagation; the file has no world row
-    // to read a propagated figure from.
-    const rangesWorld      = {};
+    const byYear            = {};
+    const stateByYearPrior  = {};
+    const nationalPosterior = {};
+    const nationalPrior     = {};
+    const rangesByYear      = {};
 
-    const addTo = (acc, key, v) => {
-      if (v == null) return;
-      acc[key] = (acc[key] ?? 0) + v;
-    };
-
-    for (const raw of rows) {
-      const csvName = raw.countries?.trim();
-      if (!csvName) continue;
-      const name = ADMIN_ALIASES[csvName] ?? csvName;
-
-      // byYear: both suffixes present, so the choropleth can color in either
-      // Data Source mode (see computeChoroplethDomain / centralCol).
-      const row       = {};
-      // stateByYearPrior: bare keys, prior only — the bottom-up column of the
-      // 2x2 totals table reads this.
-      const priorBare = {};
-      // sectorRanges: per-sector central values + uncertainty deltas, for the
-      // Sector Breakdown chart and the country hover tooltip.
-      const bySector  = {};
-
-      for (const s of SECTORS) {
-        const csvPrefixes = asArray(s.csv);
-        const uncPrefixes = asArray(s.unc ?? s.csv);
-
-        const prior    = sumColumns(raw, csvPrefixes, '_prior');
-        const post     = sumColumns(raw, csvPrefixes, '_post');
-        const minDelta = sumColumns(raw, uncPrefixes, '_post_min');
-        const maxDelta = sumColumns(raw, uncPrefixes, '_post_max');
-
-        row[`${s.key}_prior`]     = prior;
-        row[`${s.key}_posterior`] = post;
-        priorBare[s.key]          = prior;
-        bySector[s.key]           = { prior, post, minDelta, maxDelta };
-
-        addTo(worldPrior,     s.key, prior);
-        addTo(worldPosterior, s.key, post);
-
-        const sums = rangesWorld[s.key]
-          ?? (rangesWorld[s.key] = { prior: null, post: null, minDelta: null, maxDelta: null });
-        if (prior    != null) sums.prior    = (sums.prior    ?? 0) + prior;
-        if (post     != null) sums.post     = (sums.post     ?? 0) + post;
-        if (minDelta != null) sums.minDelta = (sums.minDelta ?? 0) + minDelta;
-        if (maxDelta != null) sums.maxDelta = (sums.maxDelta ?? 0) + maxDelta;
-      }
-
-      byYear[YEAR][name]           = row;
-      stateByYearPrior[YEAR][name] = priorBare;
-      // Keyed on the ADMIN name, matching selectedState — the choropleth and
-      // the bar chart/tooltip lookups all go through the same alias.
-      rangesByCountry[name]        = bySector;
-    }
+    YEARS.forEach((year, i) => {
+      const parsed = parseCountriesCsv(yearRows[i]);
+      byYear[year]            = parsed.rows;
+      stateByYearPrior[year]  = parsed.priorBare;
+      nationalPosterior[year] = parsed.worldPosterior;
+      nationalPrior[year]     = parsed.worldPrior;
+      rangesByYear[year]      = parsed.ranges;
+    });
 
     return {
       byYear,
-      nationalPosterior: { [YEAR]: worldPosterior },
-      nationalPrior:     { [YEAR]: worldPrior },
+      nationalPosterior,
+      nationalPrior,
       stateByYearPrior,
       sectorKeys:   SECTOR_KEYS,
-      sectorRanges: { sectorKeys: SECTOR_KEYS, byCountry: rangesByCountry, world: rangesWorld },
+      // One ranges table per year — consumers pick theirs with
+      // emissionsUtils' rangesForYear.
+      sectorRanges: { sectorKeys: SECTOR_KEYS, byYear: rangesByYear },
       statesGeoJSON: countriesGeoJSON,
       manifest:      null,
     };

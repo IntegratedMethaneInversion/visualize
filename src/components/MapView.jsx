@@ -16,7 +16,7 @@ import { VectorBasemap }     from './VectorBasemap';
 import { useDatasetContext } from '../context/DatasetContext';
 import { useEmissionData }   from '../hooks/useEmissionData';
 import { useDisplayUnit }    from '../hooks/useDisplayUnit';
-import { formatMassValue, convertMass, formatRange, boundsFromDeltas } from '../utils/units';
+import { formatMassValue, formatRange, boundsFromDeltas } from '../utils/units';
 import {
   getManifestEntry,
   getGlobalDomain,
@@ -29,6 +29,7 @@ import {
   centralCol,
   parseNumber,
   hasUncertainty,
+  rangesForYear,
 } from '../utils/emissionsUtils';
 import { rasterMax } from '../utils/gridStats';
 import { boundsOf, applyRegionView, FIT_MAX_ZOOM } from '../utils/mapFraming';
@@ -425,115 +426,6 @@ function useJsonGridMax(url) {
   return max;
 }
 
-// ─── useCountryGridEnsemble (ch4-global hover uncertainty) ────────────────────
-// ch4-global has no per-sector/year ensemble rasters like CONUS — instead
-// there's one gzipped JSON per year covering the whole world at the model's
-// native 0.25°x0.3125° resolution, for every sector at once. This fetches it
-// once and reshapes each Sector dropdown value into dense {minValues,
-// maxValues} arrays on a shared {gridMeta} — same shape Colombia's hover
-// already consumes, so the lookup itself is just getValueAtLatLngFromGrid.
-//
-// The file only ships "_post" (posterior) variables, so there's nothing to look
-// up when the Data Source control is set to prior; callers should treat a null
-// result as "no uncertainty available" rather than an error. Which native
-// variables make up each sector, and the file's units, come from the dataset's
-// `countryGrid` config (see ch4/global.js).
-
-// Cached per URL at module scope — CountryGridLayer remounts (new `key`) on
-// every country switch, but that should never re-trigger a 20MB fetch +
-// decompress + parse of a file whose content never changes.
-const ensembleCache = new Map();
-
-function sumDense(length, arrays) {
-  const out = new Float32Array(length);
-  for (const arr of arrays) {
-    for (let i = 0; i < length; i++) out[i] += arr[i];
-  }
-  return out;
-}
-
-function loadEnsemble(url, { ensembleVariables, ensembleMassUnit }) {
-  return fetch(url)
-    .then(r => {
-      if (!r.ok) throw new Error(`HTTP ${r.status} — ${url}`);
-      // A static host serving this .gz as opaque bytes (no Content-Encoding
-      // header) hands us the raw gzip stream, so we decompress it ourselves.
-      // Vite's dev server instead declares Content-Encoding: gzip and the
-      // browser already transparently decodes it before we ever see the
-      // body — decompressing again there would choke on plain JSON text.
-      const alreadyDecoded = r.headers.get('content-encoding') === 'gzip';
-      return alreadyDecoded
-        ? r.text()
-        : new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).text();
-    })
-    .then(text => {
-      const raw = JSON.parse(text);
-      const { lat: lats, lon: lons } = raw.grid;
-      const nlon   = lons.length;
-      const length = lats.length * nlon;
-      const { lat_index: latIdx, lon_index: lonIdx } = raw.cells;
-
-      // Converted to Tg to match the country_sectors cells it annotates.
-      const toTg = convertMass(1, ensembleMassUnit, 'Tg');
-
-      // Native variable -> dense arrays, NaN wherever the sparse file has no
-      // cell (or lacks the variable entirely), so the tooltip omits a range
-      // there rather than showing a false zero.
-      const dense = {};
-      const denseFor = (variable) => {
-        if (dense[variable]) return dense[variable];
-        const { min, max } = raw.data[`EmisCH4_${variable}_post`] ?? {};
-        const minValues = new Float32Array(length).fill(NaN);
-        const maxValues = new Float32Array(length).fill(NaN);
-        if (min && max) {
-          for (let i = 0; i < latIdx.length; i++) {
-            const idx = latIdx[i] * nlon + lonIdx[i];
-            minValues[idx] = min[i] * toTg;
-            maxValues[idx] = max[i] * toTg;
-          }
-        }
-        return (dense[variable] = { minValues, maxValues });
-      };
-
-      // A single-variable sector sums to a copy of itself; NaN propagates
-      // through the sum, so an aggregate has no range where any part lacks one.
-      const bySector = {};
-      for (const [sector, variables] of Object.entries(ensembleVariables)) {
-        const parts = variables.map(denseFor);
-        bySector[sector] = {
-          minValues: sumDense(length, parts.map(p => p.minValues)),
-          maxValues: sumDense(length, parts.map(p => p.maxValues)),
-        };
-      }
-
-      return { gridMeta: { lats, lons }, bySector };
-    });
-}
-
-function useCountryGridEnsemble(countryGrid, year) {
-  const url = countryGrid.ensembleUrl(year);
-  // Tagged with its URL so a year switch reads as "not loaded yet" rather than
-  // showing the previous year's ranges while the new file loads.
-  const [loaded, setLoaded] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    if (!ensembleCache.has(url)) {
-      ensembleCache.set(url, loadEnsemble(url, countryGrid).catch(err => {
-        console.error('[useCountryGridEnsemble] load error:', err.message);
-        ensembleCache.delete(url); // allow a retry on next mount rather than caching the failure
-        return null;
-      }));
-    }
-
-    ensembleCache.get(url).then(data => { if (!cancelled) setLoaded({ url, data }); });
-    return () => { cancelled = true; };
-  }, [url, countryGrid]);
-
-  return loaded?.url === url ? loaded.data : null;
-}
-
 // ─── JsonGridHoverLayer ───────────────────────────────────────────────────────
 // Same portal tooltip as GridHoverLayer but uses the flat JSON values array
 // instead of a parsed georaster (the polygon layer is non-interactive).
@@ -816,11 +708,12 @@ function JsonGridLayer({ gridMeta, filePath, domainMax, colorStops, opacity, onR
 }
 
 // ─── CountryGridLayer (ch4-global masked per-country grid) ───────────────────
-// Each file is already a ready-made GeoJSON FeatureCollection of grid-cell
-// polygons (properties.emissions) clipped to one country — unlike the
-// Colombia grid, there's no shared lats/lons metadata to reconstruct cells
-// from, so this just draws the features as given. Rendered on a canvas
-// renderer (features can number in the thousands for large countries).
+// Each country/year is one gzipped `ch4-global-country-grid/1` file: a sorted
+// list of native-grid cell ids plus columnar post/prior/min/max values per
+// sector (format in public/data/ch4_global/README.md). countryGridToGeoJSON
+// expands it into a FeatureCollection of cell rectangles, which the rest of
+// this layer draws as given. Rendered on a canvas renderer (features can
+// number in the thousands for large countries).
 //
 // The pane is pointer-events:none (see below) so clicks fall through to the
 // country-selection layer underneath — otherwise this canvas, which always
@@ -829,6 +722,62 @@ function JsonGridLayer({ gridMeta, filePath, domainMax, colorStops, opacity, onR
 // same setting means per-feature Leaflet tooltips never fire, so hover values
 // are looked up here directly (bounding-box scan, same idea as
 // getValueAtLatLngFromGrid) and rendered as a portal tooltip instead.
+
+// Fetches and parses a gzipped JSON file. A static host serving the .gz as
+// opaque bytes (no Content-Encoding header) hands us the raw gzip stream, so
+// we decompress it ourselves. Vite's dev server instead declares
+// Content-Encoding: gzip and the browser already transparently decodes it
+// before we ever see the body — decompressing again there would choke on
+// plain JSON text.
+function fetchGzipJson(url) {
+  return fetch(url)
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status} — ${url}`);
+      const alreadyDecoded = r.headers.get('content-encoding') === 'gzip';
+      return alreadyDecoded
+        ? r.text()
+        : new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).text();
+    })
+    .then(text => JSON.parse(text));
+}
+
+// Cell id = row * nlon + col; the rectangle is the cell centre +/- half a
+// cell, latitude clipped to +/-90 — exactly the polygons the files were
+// repacked from. Properties use the names the rest of this layer reads:
+//   emissions_<sector>_<post|prior>  central values
+//   min_<sector> / max_<sector>      absolute ensemble bounds of the posterior
+// A sector missing from a block is zero in every cell, so it's simply left
+// unset — readEmissions and cellBound both read unset as 0. A null bound is
+// kept as null: the ensemble has no range for that cell.
+function countryGridToGeoJSON(data) {
+  const { nlon, lat_res: dlat, lon_res: dlon, lat_origin: lat0, lon_origin: lon0 } = data.grid;
+  const columns = [
+    ...Object.entries(data.post  ?? {}).map(([k, vals]) => [`emissions_${k}_post`,  vals]),
+    ...Object.entries(data.prior ?? {}).map(([k, vals]) => [`emissions_${k}_prior`, vals]),
+    ...Object.entries(data.min   ?? {}).map(([k, vals]) => [`min_${k}`, vals]),
+    ...Object.entries(data.max   ?? {}).map(([k, vals]) => [`max_${k}`, vals]),
+  ];
+
+  const features = data.cells.map((id, i) => {
+    const lat = lat0 + Math.floor(id / nlon) * dlat;
+    const lon = lon0 + (id % nlon) * dlon;
+    const n = Math.min(90,  lat + dlat / 2);
+    const s = Math.max(-90, lat - dlat / 2);
+    const w = lon - dlon / 2;
+    const e = lon + dlon / 2;
+
+    const properties = {};
+    for (const [key, vals] of columns) properties[key] = vals[i];
+
+    return {
+      type: 'Feature',
+      properties,
+      geometry: { type: 'Polygon', coordinates: [[[w, n], [w, s], [e, s], [e, n], [w, n]]] },
+    };
+  });
+
+  return { type: 'FeatureCollection', features };
+}
 
 function cellBBox(geometry) {
   if (!geometry) return null;
@@ -865,6 +814,21 @@ function readEmissions(properties, propertyKeys) {
   return total;
 }
 
+// Sums one ensemble bound ('min' or 'max') over a sector's native keys for a
+// single cell. Aggregates sum their components' bounds — a worst-case
+// approximation (every component erring the same way at once), not a
+// statistical propagation, but fine for a hover tooltip. Any null component
+// means no range for the whole cell.
+function cellBound(properties, nativeKeys, bound) {
+  let total = 0;
+  for (const k of nativeKeys) {
+    const v = properties?.[`${bound}_${k}`];
+    if (v === null) return null;
+    total += v ?? 0;
+  }
+  return total;
+}
+
 function domainMaxFor(features, propertyKeys) {
   let max = 0;
   for (const f of features) {
@@ -879,10 +843,8 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
   const {
     controls, fitToSelection, urlView, selectedState, activeDataset,
   } = useDatasetContext();
-  const { viewOverrides, countryGrid } = activeDataset;
-  const { cellVariables } = countryGrid;
+  const { viewOverrides, countryGrid: { cellVariables } } = activeDataset;
   const { convert, label: units } = useDisplayUnit();
-  const ensembleMinMax = useCountryGridEnsemble(countryGrid, controls.year);
   const layerRef = useRef(null);
   const rendererRef = useRef(null);
   // Placeholder until the fetch below resolves and overwrites it. Derived
@@ -909,15 +871,12 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
     let cancelled = false;
     onLoadingChange?.(true);
 
-    fetch(filePath)
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status} — ${filePath}`);
-        return r.json();
-      })
-      .then(data => {
+    fetchGzipJson(filePath)
+      .then(file => {
         if (cancelled) return;
 
-        const features = data.features ?? [];
+        const data     = countryGridToGeoJSON(file);
+        const features = data.features;
         featuresRef.current = features;
 
         const propertyKeys       = emissionsPropertyKeys(cellVariables, controls.sector, controls.satellite);
@@ -1037,18 +996,13 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
       const propertyKeys = emissionsPropertyKeys(cellVariables, controls.sector, controls.satellite);
       const value = readEmissions(hit.properties, propertyKeys);
 
-      // The file's grid and the ensemble's grid are both the native
-      // 0.25°x0.3125° model grid, but look up by this cell's own center
-      // rather than the raw cursor position — getValueAtLatLngFromGrid's
-      // half-cell tolerance is cheap insurance against any residual offset.
-      // Ensemble uncertainty only exists for the posterior estimate.
-      const sectorMinMax = controls.satellite === 'posterior' ? ensembleMinMax?.bySector[controls.sector] : null;
+      // Ensemble uncertainty only exists for the posterior estimate, and is
+      // carried on the cell itself.
       let min = null, max = null;
-      if (sectorMinMax) {
-        const centerLat = (hit.minLat + hit.maxLat) / 2;
-        const centerLon = (hit.minLon + hit.maxLon) / 2;
-        min = getValueAtLatLngFromGrid(ensembleMinMax.gridMeta, sectorMinMax.minValues, centerLat, centerLon, { allowZero: true });
-        max = getValueAtLatLngFromGrid(ensembleMinMax.gridMeta, sectorMinMax.maxValues, centerLat, centerLon, { allowZero: true });
+      if (controls.satellite === 'posterior') {
+        const nativeKeys = cellVariables[controls.sector] ?? [controls.sector];
+        min = cellBound(hit.properties, nativeKeys, 'min');
+        max = cellBound(hit.properties, nativeKeys, 'max');
       }
 
       setHover({ point: e.containerPoint, value, min, max });
@@ -1522,7 +1476,7 @@ export function MapView() {
             }
             suppressTooltipFor={activeDataset.gridType === 'country-mask' ? selectedState : null}
             onStateClick={handleStateClick}
-            sectorRanges={baseData.sectorRanges}
+            sectorRanges={rangesForYear(baseData.sectorRanges, controls.year)}
             sector={controls.sector}
             satellite={controls.satellite}
           />

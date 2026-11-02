@@ -251,6 +251,19 @@ export function buildBottomUpLineData(baseData, { mode, sectorKey, selectedState
 // bounds, so the absolute lower/upper bound is `post -/+ delta` — and since
 // a sector/country's delta can exceed its own post value, the lower bound
 // is clamped to 0 rather than going negative.
+//
+// ch4-global keeps one ranges table per year (`sectorRanges.byYear`); callers
+// pass rangesForYear's result, the single-year shape these builders read.
+
+// Returns the {sectorKeys, byCountry, world} table for one year, or null when
+// that year has none.
+export function rangesForYear(sectorRanges, year) {
+  if (!sectorRanges) return null;
+  if (!sectorRanges.byYear) return sectorRanges; // single-year shape, unchanged
+  const y = sectorRanges.byYear[year];
+  return y ? { sectorKeys: sectorRanges.sectorKeys, ...y } : null;
+}
+
 export function buildRangesBarData(sectorRanges, { selectedState, satellite }) {
   const empty = { labels: [], values: [], mins: [], maxs: [] };
   if (!sectorRanges) return empty;

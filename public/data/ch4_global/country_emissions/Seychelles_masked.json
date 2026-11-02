@@ -1,8 +1,0 @@
-{
-"type": "FeatureCollection",
-"name": "Seychelles_masked",
-"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
-"features": [
-{ "type": "Feature", "properties": { "emissions": 6.2370317317735023e-08 }, "geometry": { "type": "Polygon", "coordinates": [ [ [ 46.113097606211959, -9.326896787716571 ], [ 46.113097606211959, -9.573329261959882 ], [ 46.425552401525536, -9.573329261959882 ], [ 46.425552401525536, -9.326896787716571 ], [ 46.113097606211959, -9.326896787716571 ] ] ] } }
-]
-}
