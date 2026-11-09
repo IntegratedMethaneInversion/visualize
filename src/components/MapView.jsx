@@ -32,6 +32,9 @@ import {
   rangesForYear,
 } from '../utils/emissionsUtils';
 import { rasterMax } from '../utils/gridStats';
+import {
+  isRatioMode, ratioOrNull, ratioToT, formatRatio, formatThreshold,
+} from '../utils/ratioScale';
 import { boundsOf, applyRegionView, FIT_MAX_ZOOM } from '../utils/mapFraming';
 
 // ─── Color utilities ──────────────────────────────────────────────────────────
@@ -838,7 +841,37 @@ function domainMaxFor(features, propertyKeys) {
   return max;
 }
 
-function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomainReady, onLoadingChange }) {
+// What the cell styling needs for the current controls. Shared by the initial
+// load and later control changes so the two can't drift apart. `priorKeys` is
+// always the selected sector's bottom-up, the ratio view's denominator; in
+// that view `propertyKeys` is the IMI estimate (emissionsPropertyKeys reads
+// anything but 'prior' as posterior), so the emissions domain reported to the
+// legend stays meaningful when switching back.
+function countryGridStyleState(features, cellVariables, { sector, satellite, colorScaleMax }, pinnedSector) {
+  const rawDomainMax = domainMaxFor(
+    features, emissionsPropertyKeys(cellVariables, pinnedSector ?? sector, satellite),
+  );
+  return {
+    propertyKeys: emissionsPropertyKeys(cellVariables, sector, satellite),
+    priorKeys:    emissionsPropertyKeys(cellVariables, sector, 'prior'),
+    rawDomainMax,
+    domainMax:    (rawDomainMax || 1) * (colorScaleMax ?? 1.0),
+  };
+}
+
+// Grid cells and countries share one ratio color rule; only the masking
+// threshold differs.
+function ratioFill(post, prior, threshold, ratioScale) {
+  const r = ratioOrNull(post, prior, threshold);
+  return r == null ? ratioScale.maskColor : stopsToColor(ratioToT(r, ratioScale), ratioScale.stops);
+}
+
+// `ratioScale` is the dataset's display.ratioScale while the 'ratio' Data
+// Source is selected, null otherwise — its presence is what switches this
+// layer into the ratio view.
+function CountryGridLayer({
+  filePath, colorStops, opacity, pinnedSector, ratioScale, onDomainReady, onLoadingChange,
+}) {
   const map = useMap();
   const {
     controls, fitToSelection, urlView, selectedState, activeDataset,
@@ -850,18 +883,27 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
   // Placeholder until the fetch below resolves and overwrites it. Derived
   // rather than hardcoded so it can't drift from the sector definitions.
   const styleRef = useRef({
-    colorStops, opacity, domainMax: 1,
+    colorStops, opacity, ratioScale, domainMax: 1,
     propertyKeys: emissionsPropertyKeys(cellVariables, 'TotalAnth', 'posterior'),
+    priorKeys:    emissionsPropertyKeys(cellVariables, 'TotalAnth', 'prior'),
   });
   styleRef.current.colorStops = colorStops;
   styleRef.current.opacity = opacity;
+  styleRef.current.ratioScale = ratioScale;
   const cellsRef = useRef([]);
   const featuresRef = useRef([]);
   const [hover, setHover] = useState(null);
 
   const styleFeature = useCallback((feature) => {
-    const { colorStops: cs, opacity: op, domainMax: dm, propertyKeys } = styleRef.current;
+    const {
+      colorStops: cs, opacity: op, domainMax: dm, propertyKeys, priorKeys, ratioScale: rs,
+    } = styleRef.current;
     const v = readEmissions(feature.properties, propertyKeys);
+    if (rs) {
+      const prior = readEmissions(feature.properties, priorKeys);
+      const fillColor = ratioFill(v, prior, rs.cellPriorThreshold, rs);
+      return { color: 'transparent', weight: 0, fillColor, fillOpacity: op };
+    }
     const t = dm > 0 ? Math.max(0, Math.min(1, v / dm)) : 0;
     return { color: 'transparent', weight: 0, fillColor: stopsToColor(t, cs), fillOpacity: op };
   }, []);
@@ -879,12 +921,8 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
         const features = data.features;
         featuresRef.current = features;
 
-        const propertyKeys       = emissionsPropertyKeys(cellVariables, controls.sector, controls.satellite);
-        const domainPropertyKeys = emissionsPropertyKeys(cellVariables, pinnedSector ?? controls.sector, controls.satellite);
-        const rawDomainMax       = domainMaxFor(features, domainPropertyKeys);
-        const scaleMax           = controls.colorScaleMax ?? 1.0;
-        styleRef.current.propertyKeys = propertyKeys;
-        styleRef.current.domainMax    = (rawDomainMax || 1) * scaleMax;
+        const { rawDomainMax, ...style } = countryGridStyleState(features, cellVariables, controls, pinnedSector);
+        Object.assign(styleRef.current, style);
 
         cellsRef.current = features
           .map(f => {
@@ -974,12 +1012,8 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
   // no refetch.
   useEffect(() => {
     if (!layerRef.current || !featuresRef.current.length) return;
-    const propertyKeys       = emissionsPropertyKeys(cellVariables, controls.sector, controls.satellite);
-    const domainPropertyKeys = emissionsPropertyKeys(cellVariables, pinnedSector ?? controls.sector, controls.satellite);
-    const rawDomainMax       = domainMaxFor(featuresRef.current, domainPropertyKeys);
-    const scaleMax           = controls.colorScaleMax ?? 1.0;
-    styleRef.current.propertyKeys = propertyKeys;
-    styleRef.current.domainMax    = (rawDomainMax || 1) * scaleMax;
+    const { rawDomainMax, ...style } = countryGridStyleState(featuresRef.current, cellVariables, controls, pinnedSector);
+    Object.assign(styleRef.current, style);
     layerRef.current.setStyle(styleFeature);
     onDomainReady?.(rawDomainMax > 0 ? { min: 0, max: rawDomainMax } : null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -997,15 +1031,22 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
       const value = readEmissions(hit.properties, propertyKeys);
 
       // Ensemble uncertainty only exists for the posterior estimate, and is
-      // carried on the cell itself.
+      // carried on the cell itself. In the ratio view it's shown against the
+      // IMI value rather than the ratio: the ensemble's spread is the
+      // posterior's, and dividing it by the prior would misstate it if
+      // members' priors differ.
       let min = null, max = null;
-      if (controls.satellite === 'posterior') {
+      if (controls.satellite !== 'prior') {
         const nativeKeys = cellVariables[controls.sector] ?? [controls.sector];
         min = cellBound(hit.properties, nativeKeys, 'min');
         max = cellBound(hit.properties, nativeKeys, 'max');
       }
 
-      setHover({ point: e.containerPoint, value, min, max });
+      const prior = ratioScale
+        ? readEmissions(hit.properties, emissionsPropertyKeys(cellVariables, controls.sector, 'prior'))
+        : null;
+
+      setHover({ point: e.containerPoint, value, min, max, prior });
     },
     mouseout()  { setHover(null); },
     dragstart() { setHover(null); },
@@ -1015,6 +1056,29 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
 
   const value = convert(hover.value);
   const range = formatRange(convert(hover.min), convert(hover.max));
+
+  if (ratioScale) {
+    const ratio = ratioOrNull(hover.value, hover.prior, ratioScale.cellPriorThreshold);
+    return createPortal(
+      <div
+        className="grid-hover-tooltip"
+        style={{ left: hover.point.x + 14, top: hover.point.y }}
+      >
+        {ratio != null
+          ? <>{formatRatio(ratio)}<span className="grid-hover-units"> × bottom-up</span></>
+          : <span className="grid-hover-units">
+              Bottom-up ≤ {formatThreshold(convert(ratioScale.cellPriorThreshold))} {units}: no ratio
+            </span>}
+        <span className="grid-hover-detail">
+          IMI {formatMassValue(value)}
+          {range && <> {range}</>}
+          {' · '}Bottom-up {formatMassValue(convert(hover.prior))}
+          {units && <> {units}</>}
+        </span>
+      </div>,
+      map.getContainer(),
+    );
+  }
 
   return createPortal(
     <div
@@ -1031,9 +1095,17 @@ function CountryGridLayer({ filePath, colorStops, opacity, pinnedSector, onDomai
 
 // ─── ChoroplethLayer ──────────────────────────────────────────────────────────
 
+// Strictly numeric read for the ratio view: parseNumber(null) is 0, which
+// would turn a missing country value into a real zero.
+const finiteOrNull = v => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+// `ratioScale` (non-null only in the 'ratio' Data Source) switches the fill
+// to IMI ÷ bottom-up. `colKey` is then the posterior column, and the bottom-up
+// one is the same sector's `_prior`; dataLoader puts both suffixes on every
+// row for exactly this kind of switch.
 function ChoroplethLayer({
   geojson, stateDataMap, colKey, domain, colorStops, opacity, suppressTooltipFor, onStateClick,
-  sectorRanges, sector, satellite,
+  sectorRanges, sector, satellite, ratioScale,
 }) {
   // Tooltip numbers follow the dashboard-wide units selector, same as the 2x2
   // totals and the grid-cell tooltip. Note that react-leaflet only runs
@@ -1058,15 +1130,23 @@ function ChoroplethLayer({
     (feature) => {
       const name = getFeatureName(feature);
       const row  = stateDataMap?.[name];
-      const val  = row ? parseNumber(row[colKey]) : null;
+      const noData = { fillColor: '#e2e8f0', fillOpacity: 0.5, color: '#cbd5e1', weight: 0.6 };
 
-      if (val == null || !Number.isFinite(val)) {
-        return { fillColor: '#e2e8f0', fillOpacity: 0.5, color: '#cbd5e1', weight: 0.6 };
+      if (ratioScale) {
+        const post = finiteOrNull(row?.[colKey]);
+        if (post == null) return noData;
+        const fillColor = ratioFill(
+          post, finiteOrNull(row[`${sector}_prior`]), ratioScale.countryPriorThreshold, ratioScale,
+        );
+        return { fillColor, fillOpacity: opacity, color: '#ffffff', weight: 0.6 };
       }
+
+      const val  = row ? parseNumber(row[colKey]) : null;
+      if (val == null || !Number.isFinite(val)) return noData;
       const t = (val - domain.min) / ((domain.max - domain.min) || 1);
       return { fillColor: stopsToColor(t, colorStops), fillOpacity: opacity, color: '#ffffff', weight: 0.6 };
     },
-    [stateDataMap, colKey, domain, colorStops, opacity],
+    [stateDataMap, colKey, domain, colorStops, opacity, ratioScale, sector],
   );
 
   const onEachFeature = useCallback(
@@ -1085,13 +1165,26 @@ function ChoroplethLayer({
         : null;
       const bounds = boundsFromDeltas(entry?.post, entry?.minDelta, entry?.maxDelta);
       const range  = bounds ? formatRange(convert(bounds[0]), convert(bounds[1])) : null;
+      const unitsHtml = units ? ` <span class="choropleth-tooltip-units">${units}</span>` : '';
+      const rangeHtml = range ? ` <span class="choropleth-tooltip-range">${range}</span>` : '';
 
-      layer.bindTooltip(
-        `<strong>${name}</strong><br />${formatMassValue(val)}`
-        + (range ? ` <span class="choropleth-tooltip-range">${range}</span>` : '')
-        + (units ? ` <span class="choropleth-tooltip-units">${units}</span>` : ''),
-        { sticky: true },
-      );
+      // Ratio view: the ratio on top, the two values it divides underneath
+      // (the ensemble range stays with the IMI value — see CountryGridLayer).
+      let body;
+      if (ratioScale) {
+        const prior = finiteOrNull(row?.[`${sector}_prior`]);
+        const ratio = ratioOrNull(finiteOrNull(row?.[colKey]), prior, ratioScale.countryPriorThreshold);
+        const head  = ratio != null
+          ? `${formatRatio(ratio)} <span class="choropleth-tooltip-units">× bottom-up</span>`
+          : `<span class="choropleth-tooltip-units">Bottom-up ≤ `
+            + `${formatThreshold(convert(ratioScale.countryPriorThreshold))} ${units}: no ratio</span>`;
+        body = `${head}<br /><span class="choropleth-tooltip-range">IMI ${formatMassValue(val)}`
+          + `${range ? ` ${range}` : ''} · Bottom-up ${formatMassValue(convert(prior))}</span>${unitsHtml}`;
+      } else {
+        body = `${formatMassValue(val)}${rangeHtml}${unitsHtml}`;
+      }
+
+      layer.bindTooltip(`<strong>${name}</strong><br />${body}`, { sticky: true });
       layer.on('tooltipopen', () => {
         if (name === suppressRef.current) layer.closeTooltip();
       });
@@ -1101,7 +1194,7 @@ function ChoroplethLayer({
         mouseout(e)  { e.target.setStyle({ weight: 0.6, color: '#ffffff', fillOpacity: opacityRef.current }); },
       });
     },
-    [onStateClick, stateDataMap, colKey, convert, units, sectorRanges, sector, satellite],
+    [onStateClick, stateDataMap, colKey, convert, units, sectorRanges, sector, satellite, ratioScale],
   );
 
   if (!geojson) return null;
@@ -1170,6 +1263,8 @@ export function MapView() {
 
   const { mapConfig, display, dataRoot } = activeDataset;
   const colorStops = display.colorScale?.stops ?? [];
+  // Non-null only while the 'ratio' Data Source is selected (ch4-global).
+  const ratioScale = isRatioMode(controls.satellite) ? display.ratioScale ?? null : null;
   // ch4-permian-weekly has no choropleth alternative (no per-state CSV data)
   // and thus no viewMode control — its "grid" is always on, like ch4-global's
   // country-mask overlay.
@@ -1479,6 +1574,7 @@ export function MapView() {
             sectorRanges={rangesForYear(baseData.sectorRanges, controls.year)}
             sector={controls.sector}
             satellite={controls.satellite}
+            ratioScale={ratioScale}
           />
         )}
 
@@ -1490,6 +1586,7 @@ export function MapView() {
             colorStops={colorStops}
             opacity={controls.opacity ?? 0.7}
             pinnedSector={display.colorScale?.pinnedGridSector}
+            ratioScale={ratioScale}
             onDomainReady={(d) => setJsonGridDomain(d)}
             onLoadingChange={setCountryGridLoading}
           />

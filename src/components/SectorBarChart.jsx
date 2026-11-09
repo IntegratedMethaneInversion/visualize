@@ -467,7 +467,9 @@ export function SectorBarChart() {
     if (!rangesData.labels.length) return null;
 
     const showUncertainty = hasUncertainty(controls.satellite);
-    const showBottomUp    = controls.satellite === 'posterior';
+    // The 'ratio' Data Source only recolors the map; the chart shows the two
+    // estimates it divides, exactly as in posterior mode.
+    const showBottomUp    = controls.satellite !== 'prior';
     const accent           = activeFamily.theme.accent;
 
     const bottomUpData = showBottomUp
