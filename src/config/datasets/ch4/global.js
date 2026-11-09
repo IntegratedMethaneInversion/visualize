@@ -270,6 +270,10 @@ registerDataset({
       options: [
         { value: 'posterior', label: 'IMI best estimate' },
         { value: 'prior',     label: 'Bottom-up'   },
+        // Map-only: colors by IMI ÷ bottom-up (see display.ratioScale). The
+        // Sector Breakdown chart and totals table treat it as 'posterior',
+        // i.e. show both estimates side by side.
+        { value: 'ratio',     label: 'IMI ÷ bottom-up' },
       ],
       default: 'posterior',
     },
@@ -303,6 +307,9 @@ registerDataset({
       options: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.25, 1.5, 2.0],
       default: 1.0,
       format:  v => `${Math.round(v * 100)}%`,
+      // The ratio view's scale is fixed (display.ratioScale), so there is
+      // nothing for this to stretch.
+      visible: c => c.satellite !== 'ratio',
     },
   ],
 
@@ -340,6 +347,42 @@ registerDataset({
       // per-country grid overlay pin to the same sector.
       pinnedSector:     'TotalAnth',
       pinnedGridSector: 'TotalAnth',
+    },
+    // Color scale for the 'ratio' Data Source (IMI ÷ bottom-up), used by both
+    // the country choropleth and the per-country grid.
+    //
+    // Range: log-symmetric about 1. Fixed rather than data-driven so one
+    // outlier cell can't wash out a country. In 2024, 0.25–4 saturates ~7% of
+    // unmasked cells (p1 ≈ 0.2, p99 ≈ 13–15 across sectors) and 1–6
+    // countries per sector; 0.5–2 would saturate ~27% of cells.
+    //
+    // Masking: cells (and countries) whose summed bottom-up is at or below
+    // the threshold are drawn in maskColor instead of a ratio. A sweep over
+    // every 2024 country grid showed the threshold does *not* tame the ratio's
+    // tails — p1/p99 barely move from "prior > 0" up to 1e-3 Tg/yr — so its
+    // only job is hiding cells where the sector essentially isn't present. At
+    // 1e-5 Tg/yr (10 t/yr) per cell it greys 36% of cells for Total
+    // anthropogenic (75% for oil & gas) while hiding just 0.03% (0.34%) of
+    // bottom-up emissions; 1e-4 starts to hide real sources (3% for oil &
+    // gas). Countries use 1 kt/yr, which only masks sectors a country barely
+    // has (e.g. Djibouti oil & gas).
+    //
+    // Stops: matplotlib's RdBu reversed (blue = IMI below bottom-up, red =
+    // above), ColorBrewer's 11-class values. maskColor is a mid grey so it
+    // can't be mistaken for the ramp's near-white centre (ratio ≈ 1).
+    ratioScale: {
+      min:  0.25,
+      max:  4,
+      ticks: [0.25, 0.5, 1, 2, 4],   // evenly spaced on the log ramp
+      stops: [
+        [0.0, '#053061'], [0.1, '#2166ac'], [0.2, '#4393c3'], [0.3, '#92c5de'],
+        [0.4, '#d1e5f0'], [0.5, '#f7f7f7'], [0.6, '#fddbc7'], [0.7, '#f4a582'],
+        [0.8, '#d6604d'], [0.9, '#b2182b'], [1.0, '#67001f'],
+      ],
+      maskColor:             '#9ca3af',
+      cellPriorThreshold:    1e-5,   // Tg/yr per grid cell
+      countryPriorThreshold: 1e-3,   // Tg/yr per country
+      legendTitle:           'IMI ÷ bottom-up',
     },
   },
 

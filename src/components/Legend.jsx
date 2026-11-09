@@ -5,6 +5,7 @@ import { getGlobalDomain, getPeriodGlobalDomain } from '../utils/manifestUtils';
 import { computeChoroplethDomain } from '../utils/emissionsUtils';
 import { useDisplayUnit }          from '../hooks/useDisplayUnit';
 import { formatAxisValue }         from '../utils/units';
+import { isRatioMode, formatThreshold } from '../utils/ratioScale';
 
 function buildGradient(stops) {
   if (!stops?.length) return 'none';
@@ -19,7 +20,12 @@ export function Legend() {
   const { data: baseData }                          = useEmissionData();
   const { display }                                 = activeDataset;
   const isUpload = activeDataset.id === 'user-upload';
-  const gradient = useMemo(() => buildGradient(display.colorScale?.stops), [display.colorScale]);
+  // Non-null only while the 'ratio' Data Source is selected (ch4-global).
+  const ratioScale = isRatioMode(controls.satellite) ? display.ratioScale ?? null : null;
+  const gradient = useMemo(
+    () => buildGradient((ratioScale ?? display.colorScale)?.stops),
+    [ratioScale, display.colorScale],
+  );
 
   // ch4-global has no viewMode control — its "grid" is the masked per-country
   // overlay, active only once a country is selected.
@@ -95,6 +101,32 @@ export function Legend() {
   // Same compact formatting the chart axes use — these two ticks sit under a
   // ~200px gradient, and a Tons-scale max is 6+ digits.
   const fmt = v => (v == null ? '' : formatAxisValue(convert(v)));
+
+  // Ratio view: fixed log-scale ticks (evenly spaced, so space-between lines
+  // them up with the gradient) plus a swatch for the masked cells/countries.
+  // The threshold follows the units selector; the ratio itself has no units.
+  if (ratioScale) {
+    const threshold = isCountryGrid ? ratioScale.cellPriorThreshold : ratioScale.countryPriorThreshold;
+    return (
+      <div className="legend">
+        <div className="legend-header">
+          <span className="legend-title">{ratioScale.legendTitle}</span>
+          <span className="legend-mode-badge">
+            {isGrid ? 'Grid' : 'Choropleth'}
+          </span>
+        </div>
+        <div className="legend-gradient" style={{ background: gradient }} />
+        <div className="legend-ticks">
+          {ratioScale.ticks.map(t => <span key={t}>{t}</span>)}
+        </div>
+        <div className="legend-mask">
+          <span className="legend-mask-swatch" style={{ background: ratioScale.maskColor }} />
+          Bottom-up ≤ {formatThreshold(convert(threshold))} {units}{isCountryGrid ? ' per cell' : ''}
+        </div>
+        <div className="legend-units">ratio, log scale</div>
+      </div>
+    );
+  }
 
   return (
     <div className="legend">
