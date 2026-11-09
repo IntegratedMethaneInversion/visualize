@@ -194,6 +194,12 @@ export function DataTotals() {
   // they can be edited per dataset without touching this component.
   const { bottomUp: bottomUpLabel, posterior: posteriorLabel } = activeDataset.display.totalsLabels ?? {};
 
+  // Sensitivity line under the table — only ch4-global's dataLoader provides
+  // sensitivityByYear, and only per country, so it's hidden at world level.
+  const showSensitivity = isState && !!baseData.sensitivityByYear;
+  const sensitivity     = baseData.sensitivityByYear?.[year]?.[selectedState] ?? null;
+  const sensitivityInfo = activeDataset.display.sensitivityInfo;
+
   // Helper: render a number cell — accented if populated, dimmed if not.
   // Units live once in the place/period header rather than in every cell.
   function NumCell({ value, range }) {
@@ -226,6 +232,24 @@ export function DataTotals() {
         <NumCell value={naturalBottomUp} />
         <NumCell value={naturalPost} range={naturalPostRange} />
       </div>
+
+      {showSensitivity && (
+        <div className="dtc-sensitivity">
+          Sensitivity:{' '}
+          <span className={sensitivity != null ? 'dtc-accent' : 'dtc-dim'}>
+            {sensitivity != null ? sensitivity.toFixed(2) : '—'}
+          </span>
+          {sensitivityInfo && (
+            <span className="dtc-info">
+              <button type="button" className="dtc-info-btn"
+                      aria-label="What is sensitivity?" aria-describedby="dtc-sensitivity-info">i</button>
+              <span role="tooltip" id="dtc-sensitivity-info" className="dtc-info-bubble">
+                {sensitivityInfo}
+              </span>
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -168,6 +168,9 @@ function parseCountriesCsv(csvRows) {
   // is the worst case rather than a propagation; the file has no world row
   // to read a propagated figure from.
   const rangesWorld     = {};
+  // Per-country sensitivity, shown under the 2x2 totals table. Countries only:
+  // the file has no world-level figure.
+  const sensitivity     = {};
 
   const addTo = (acc, key, v) => {
     if (v == null) return;
@@ -219,10 +222,13 @@ function parseCountriesCsv(csvRows) {
     // Keyed on the ADMIN name, matching selectedState — the choropleth and
     // the bar chart/tooltip lookups all go through the same alias.
     rangesByCountry[name] = bySector;
+    // A blank cell must stay null — parseNumber('') is 0, which would read as
+    // a real, zero sensitivity. 2024's column is currently blank throughout.
+    sensitivity[name] = raw.sensitivity?.trim() ? parseNumber(raw.sensitivity) : null;
   }
 
   return {
-    rows, priorBare, worldPrior, worldPosterior,
+    rows, priorBare, worldPrior, worldPosterior, sensitivity,
     ranges: { byCountry: rangesByCountry, world: rangesWorld },
   };
 }
@@ -306,6 +312,10 @@ registerDataset({
     legendUnits:      'Tg/yr',
     defaultPlaceLabel: 'Global', // shown in chart headers when no country is selected
     totalsLabels: { bottomUp: 'Bottom-up', posterior: 'IMI Best Estimate' }, // column headers on the DataTotals table
+    // Text for the info bubble next to the Sensitivity line under the
+    // DataTotals table (selected country only).
+    // TODO(user): replace with the real explanation
+    sensitivityInfo: 'Sensitivity indicates the percentage of information in the IMI estimate that comes from the satellite data versus the bottom-up estimate. We have generally higher confidence with higher sensitivity values.',
     // Order, labels and sub-sector lists for the Sector Breakdown bar chart,
     // straight off SECTORS so the bars and the Sector dropdown can never drift
     // apart on wording or arithmetic — subject to the temporary
@@ -347,6 +357,7 @@ registerDataset({
     const nationalPosterior = {};
     const nationalPrior     = {};
     const rangesByYear      = {};
+    const sensitivityByYear = {};
 
     YEARS.forEach((year, i) => {
       const parsed = parseCountriesCsv(yearRows[i]);
@@ -355,6 +366,7 @@ registerDataset({
       nationalPosterior[year] = parsed.worldPosterior;
       nationalPrior[year]     = parsed.worldPrior;
       rangesByYear[year]      = parsed.ranges;
+      sensitivityByYear[year] = parsed.sensitivity;
     });
 
     return {
@@ -366,6 +378,7 @@ registerDataset({
       // One ranges table per year — consumers pick theirs with
       // emissionsUtils' rangesForYear.
       sectorRanges: { sectorKeys: SECTOR_KEYS, byYear: rangesByYear },
+      sensitivityByYear,
       statesGeoJSON: countriesGeoJSON,
       manifest:      null,
     };

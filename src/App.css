@@ -426,6 +426,65 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
   color:       var(--text-muted);
 }
 
+/* Sensitivity line under the table (ch4-global, selected country only) */
+.dtc-sensitivity {
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  gap:             .3rem;
+  margin-top:      .6rem;
+  font-size:       .85rem;
+  color:           var(--text-muted);
+}
+.dtc-sensitivity .dtc-accent { font-weight: 700; }
+/* .dtc-dim's 1.5rem is sized for the table cells */
+.dtc-sensitivity .dtc-dim    { font-size: inherit; }
+
+/* Info bubble: a small circled "i", the explanation shown on hover or
+   keyboard focus. */
+.dtc-info { position: relative; display: inline-flex; }
+
+.dtc-info-btn {
+  width:         1rem;
+  height:        1rem;
+  padding:       0;
+  border-radius: 50%;
+  border:        1px solid currentColor;
+  background:    none;
+  color:         var(--text-muted);
+  font:          italic 700 .65rem/1 Georgia, serif;
+  cursor:        help;
+}
+.dtc-info-btn:hover,
+.dtc-info-btn:focus-visible { color: var(--accent-text); }
+.dtc-info-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.dtc-info-bubble {
+  position:       absolute;
+  bottom:         calc(100% + 6px);
+  left:           50%;
+  transform:      translateX(-50%);
+  z-index:        30;
+  width:          max-content;
+  max-width:      280px;
+  padding:        .45rem .6rem;
+  background:     var(--bg-secondary);
+  color:          var(--text-primary);
+  border:         1px solid var(--border);
+  border-radius:  6px;
+  box-shadow:     0 2px 8px rgba(15, 23, 42, 0.15);
+  font-size:      .75rem;
+  font-weight:    400;
+  line-height:    1.4;
+  text-align:     left;
+  visibility:     hidden;
+  opacity:        0;
+  transition:     opacity .12s;
+  pointer-events: none;
+}
+.dtc-info:hover .dtc-info-bubble,
+.dtc-info-btn:focus-visible + .dtc-info-bubble { visibility: visible; opacity: 1; }
+
 .control-group-row {
   display:           grid;
   grid-auto-flow:    column;
