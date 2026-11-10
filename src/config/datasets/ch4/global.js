@@ -223,7 +223,7 @@ function parseCountriesCsv(csvRows) {
     // the bar chart/tooltip lookups all go through the same alias.
     rangesByCountry[name] = bySector;
     // A blank cell must stay null — parseNumber('') is 0, which would read as
-    // a real, zero sensitivity. 2024's column is currently blank throughout.
+    // a real, zero sensitivity.
     sensitivity[name] = raw.sensitivity?.trim() ? parseNumber(raw.sensitivity) : null;
   }
 
