@@ -818,7 +818,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
   font-size:     .8rem;
 }
 .docs-search:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
-.docs-source-link { font-size: .75rem; color: var(--accent-text); white-space: nowrap; text-decoration: none; }
+.docs-source-link { font-size: .90rem; color: var(--accent-text); white-space: nowrap; text-decoration: none; }
 .docs-source-link:hover { text-decoration: underline; }
 
 .docs-drawer-body { flex: 1; overflow-y: auto; padding: 1rem 1.25rem 1.5rem; }
@@ -835,7 +835,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 .docs-attribution a { color: inherit; }
 
 /* Restyled Sphinx content */
-.docs-content            { font-size: .82rem; line-height: 1.6; color: var(--text-primary); }
+.docs-content            { font-size: 1.02rem; line-height: 1.6; color: var(--text-primary); }
 .docs-content p          { margin: 0 0 .65rem; }
 .docs-content a          { color: var(--accent-text); }
 .docs-content ul,
@@ -855,7 +855,7 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
   background:    var(--bg-primary);
   scroll-margin-top: .5rem;
 }
-.docs-content h2 { font-size: .9rem; font-weight: 700; margin: 0 0 .45rem; }
+.docs-content h2 { font-size: 1.09rem; font-weight: 700; margin: 0 0 .45rem; }
 .docs-content section > section dl { margin: 0 0 .5rem; }
 .docs-content section > section dt { font-weight: 600; }
 .docs-content section > section dd { margin: 0 0 .4rem 1rem; }
@@ -864,14 +864,14 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 .docs-content dl.glossary { margin: .5rem 0 0; }
 .docs-content dl.glossary dt {
   font-weight:   700;
-  font-size:     .85rem;
+  font-size:     1.05rem;
   color:         var(--accent-text);
   padding-top:   .8rem;
   border-top:    1px solid var(--border);
   scroll-margin-top: .5rem;
 }
 .docs-content dl.glossary dt:first-child { border-top: none; padding-top: 0; }
-.docs-content dl.glossary dd { margin: .25rem 0 .8rem; }
+.docs-content dl.glossary dd { margin: .25rem 0 0.9rem; }
 
 .docs-content .katex         { font-size: 1.05em; }
 .docs-content .katex-display { overflow-x: auto; overflow-y: hidden; padding: .25rem 0; }
