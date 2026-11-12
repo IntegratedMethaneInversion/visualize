@@ -739,3 +739,142 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
   padding:     0 .15rem;
 }
 .map-settings-close:hover { color: var(--text-primary); }
+
+/* ── Docs (FAQ / Glossary) drawer ─────────────────────────────────────────────
+   Content is fetched live from the IMI ReadTheDocs site (utils/docsContent.js)
+   and restyled here; selectors under .docs-content target Sphinx's markup. */
+
+.dashboard-header-actions { display: flex; align-items: center; gap: .9rem; }
+
+.docs-buttons { display: flex; gap: .3rem; }
+.docs-btn {
+  padding:       .4rem .8rem;
+  border-radius: 8px;
+  border:        1px solid var(--border);
+  background:    var(--bg-secondary);
+  color:         var(--text-muted);
+  font:          inherit;
+  font-size:     .8rem;
+  font-weight:   600;
+  cursor:        pointer;
+  transition:    background-color .2s, border-color .2s, color .2s;
+}
+.docs-btn:hover        { border-color: var(--accent); color: var(--accent-text); }
+.docs-btn.active       { background: var(--accent-dim); border-color: var(--accent); color: var(--accent-text); }
+.docs-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.docs-backdrop {
+  position:   fixed;
+  inset:      var(--header-h) 0 0 0;
+  background: rgba(15, 23, 42, 0.18);
+  z-index:    1500;
+}
+.docs-drawer {
+  position:       fixed;
+  top:            var(--header-h);
+  right:          0;
+  bottom:         0;
+  width:          min(560px, 100vw);
+  display:        flex;
+  flex-direction: column;
+  background:     var(--bg-secondary);
+  border-left:    1px solid var(--border);
+  box-shadow:     -6px 0 24px rgba(15, 23, 42, 0.12);
+  z-index:        1501;
+  animation:      docs-slide-in .18s ease-out;
+}
+@keyframes docs-slide-in { from { transform: translateX(24px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .docs-drawer { animation: none; } }
+
+.docs-drawer-header {
+  display:         flex;
+  align-items:     center;
+  justify-content: space-between;
+  padding:         1rem 1.25rem .5rem;
+}
+.docs-drawer-header h2 { font-size: 1.05rem; font-weight: 700; }
+.docs-close {
+  background: none; border: none; cursor: pointer;
+  font-size: 1.5rem; line-height: 1; color: var(--text-muted); padding: 0 .2rem;
+}
+.docs-close:hover { color: var(--text-primary); }
+
+.docs-drawer-toolbar {
+  display:       flex;
+  align-items:   center;
+  gap:           .75rem;
+  padding:       .25rem 1.25rem .75rem;
+  border-bottom: 1px solid var(--border);
+}
+.docs-search {
+  flex:          1;
+  min-width:     0;
+  padding:       .4rem .6rem;
+  border:        1px solid var(--border);
+  border-radius: 6px;
+  background:    var(--bg-primary);
+  color:         var(--text-primary);
+  font:          inherit;
+  font-size:     .8rem;
+}
+.docs-search:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+.docs-source-link { font-size: .90rem; color: var(--accent-text); white-space: nowrap; text-decoration: none; }
+.docs-source-link:hover { text-decoration: underline; }
+
+.docs-drawer-body { flex: 1; overflow-y: auto; padding: 1rem 1.25rem 1.5rem; }
+.docs-status      { font-size: .8rem; color: var(--text-muted); line-height: 1.6; }
+.docs-status a    { color: var(--accent-text); }
+.docs-retry {
+  background: none; border: none; padding: 0; font: inherit;
+  color: var(--accent-text); text-decoration: underline; cursor: pointer;
+}
+.docs-attribution {
+  margin-top: 1.5rem; padding-top: .75rem; border-top: 1px solid var(--border);
+  font-size: .7rem; color: var(--text-muted);
+}
+.docs-attribution a { color: inherit; }
+
+/* Restyled Sphinx content */
+.docs-content            { font-size: 1.02rem; line-height: 1.6; color: var(--text-primary); }
+.docs-content p          { margin: 0 0 .65rem; }
+.docs-content a          { color: var(--accent-text); }
+.docs-content ul,
+.docs-content ol         { margin: 0 0 .65rem 1.25rem; }
+.docs-content li         { margin-bottom: .25rem; }
+.docs-content li > p     { margin: 0; }
+.docs-content strong     { font-weight: 600; }
+.docs-content > section > p:first-child { color: var(--text-muted); }
+
+/* FAQ: one card per question (h2 section) */
+.docs-content section > section {
+  margin:        0 0 .75rem;
+  padding:       .75rem .9rem .3rem;
+  border:        1px solid var(--border);
+  border-left:   3px solid var(--accent);
+  border-radius: 6px;
+  background:    var(--bg-primary);
+  scroll-margin-top: .5rem;
+}
+.docs-content h2 { font-size: 1.09rem; font-weight: 700; margin: 0 0 .45rem; }
+.docs-content section > section dl { margin: 0 0 .5rem; }
+.docs-content section > section dt { font-weight: 600; }
+.docs-content section > section dd { margin: 0 0 .4rem 1rem; }
+
+/* Glossary: term / definition list */
+.docs-content dl.glossary { margin: .5rem 0 0; }
+.docs-content dl.glossary dt {
+  font-weight:   700;
+  font-size:     1.05rem;
+  color:         var(--accent-text);
+  padding-top:   .8rem;
+  border-top:    1px solid var(--border);
+  scroll-margin-top: .5rem;
+}
+.docs-content dl.glossary dt:first-child { border-top: none; padding-top: 0; }
+.docs-content dl.glossary dd { margin: .25rem 0 0.9rem; }
+
+.docs-content .katex         { font-size: 1.05em; }
+.docs-content .katex-display { overflow-x: auto; overflow-y: hidden; padding: .25rem 0; }
+
+.docs-flash { animation: docs-flash 1.2s ease-out; }
+@keyframes docs-flash { 0% { background-color: var(--accent-dim); } 100% { background-color: transparent; } }

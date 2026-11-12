@@ -1,4 +1,4 @@
-import React from 'react';
+import { useCallback, useState } from 'react';
 import { useDatasetContext } from '../context/DatasetContext';
 import { FamilySelector }   from './FamilySelector';
 import { DatasetSelector }  from './DatasetSelector';
@@ -11,6 +11,7 @@ import { MapView }          from './MapView';
 import { Legend }           from './Legend';
 import { SectorBarChart }   from './SectorBarChart';
 import { TimeSeriesPlot }   from './TimeSeriesPlot';
+import { DocsButtons, DocsDrawer } from './DocsDrawer';
 
 // Splits a description on its citation text (e.g. "Hancock et al. (2026)")
 // and wraps that portion in a link, leaving the surrounding text untouched.
@@ -34,13 +35,23 @@ export function Dashboard() {
     ? (uploadedData?.meta?.name || activeDataset.name)
     : activeDataset.name;
 
+  // Which docs page ('faq' | 'glossary') the drawer shows; null when closed.
+  const [docsKey, setDocsKey] = useState(null);
+  const toggleDocs = useCallback(key => setDocsKey(cur => (cur === key ? null : key)), []);
+  const closeDocs  = useCallback(() => setDocsKey(null), []);
+
   return (
     <div className="dashboard" data-family={activeFamily.id}>
 
       <header className="dashboard-header">
         <h1 className="dashboard-title">{activeFamily.dashboardTitle}</h1>
-        <FamilySelector />
+        <div className="dashboard-header-actions">
+          <DocsButtons openKey={docsKey} onToggle={toggleDocs} />
+          <FamilySelector />
+        </div>
       </header>
+
+      {docsKey && <DocsDrawer key={docsKey} pageKey={docsKey} onClose={closeDocs} />}
 
       {activeFamily.id === 'CO2' && (
         <div className="family-warning-banner">
