@@ -13,6 +13,7 @@ import 'leaflet/dist/leaflet.css';
 import parseGeoraster        from 'georaster';
 import GeoRasterLayer        from 'georaster-layer-for-leaflet';
 import { VectorBasemap }     from './VectorBasemap';
+import { SettingsIcon }      from './MapSettings';
 import { useDatasetContext } from '../context/DatasetContext';
 import { useEmissionData }   from '../hooks/useEmissionData';
 import { useDisplayUnit }    from '../hooks/useDisplayUnit';
@@ -1515,8 +1516,20 @@ export function MapView() {
       {!loading && error && (
         <div className="map-overlay error">Error: {error}</div>
       )}
-      {!loading && !error && !selectedState && baseData?.statesGeoJSON && (
-        <div className="map-overlay hint">Click a region to view regional data</div>
+      {/* Shown on every map view (Permian has no regions to click, and the
+          region prompt drops once one is selected) so the Map Settings note is
+          always there. Yields its spot to the loading/error overlays. */}
+      {!loading && !error && !countryGridLoading && (
+        <div className="map-overlay hint">
+          {!selectedState && baseData?.statesGeoJSON && (
+            <span>Click a region to view regional data</span>
+          )}
+          <span className="hint-settings">
+            More map options in
+            <span className="hint-settings-icon"><SettingsIcon size={14} /></span>
+            Map Settings
+          </span>
+        </div>
       )}
       {!loading && countryGridLoading && (
         <div className="map-overlay loading">Loading country grid…</div>
