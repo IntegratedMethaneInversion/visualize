@@ -2,7 +2,7 @@ import React from 'react';
 import { useDatasetContext } from '../context/DatasetContext';
 import { FamilySelector }   from './FamilySelector';
 import { DatasetSelector }  from './DatasetSelector';
-import { SectorSelector }   from './SectorSelector';
+import { SectorSelector, YearSelector } from './SectorSelector';
 import { MapSettings }      from './MapSettings';
 import { UnitsSelector }    from './UnitsSelector';
 import { DataTotals }       from './DataTotals';
@@ -69,6 +69,7 @@ export function Dashboard() {
             {/* Only one dataset in this family (e.g. uploads) — nothing to switch between */}
             {datasetsInActiveFamily.length > 1 && <DatasetSelector />}
             <SectorSelector />
+            <YearSelector />
           </div>
 
           {/* Dataset title + description */}

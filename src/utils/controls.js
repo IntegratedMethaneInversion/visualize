@@ -1,6 +1,9 @@
-// The sector control is pulled out of ControlPanel's Filters list and rendered
-// as tabs at the top of the sidebar by SectorSelector.
+// The sector and year controls are pulled out of ControlPanel (the Map
+// Settings popover) and rendered as tab rows in the sidebar by SectorSelector
+// and YearSelector.
 export const SECTOR_CONTROL_KEY = 'sector';
+export const YEAR_CONTROL_KEY   = 'year';
+export const SIDEBAR_CONTROL_KEYS = new Set([SECTOR_CONTROL_KEY, YEAR_CONTROL_KEY]);
 
 // Options can be a static list, derived from other controls, or read from the
 // loaded data. Returns null when the control is hidden or has nothing to offer.
