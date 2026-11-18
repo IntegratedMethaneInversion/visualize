@@ -662,6 +662,13 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
   text-align:     center;
 }
 .hint-settings      { display: inline-flex; align-items: center; gap: .3rem; font-size: .74rem; }
+.hint-dismiss {
+  pointer-events: auto;   /* the bubble itself lets clicks through to the map */
+  margin-left: .15rem; padding: 0 .2rem; border: none; background: none;
+  font-size: .95rem; line-height: 1; color: var(--text-muted); cursor: pointer; border-radius: 4px;
+}
+.hint-dismiss:hover         { color: var(--text-primary); background: var(--bg-elevated); }
+.hint-dismiss:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* Region prompt stays the headline; the settings note sits under it, smaller. */
 .map-overlay.hint > span:only-child { font-size: .82rem; }
 .hint-settings-icon {
