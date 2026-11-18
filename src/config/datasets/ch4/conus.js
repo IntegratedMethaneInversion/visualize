@@ -24,6 +24,7 @@ registerDataset({
   
   citation: { text: 'Estrada et al. (2026)', url: 'https://acp.copernicus.org/articles/26/10629/2026/' },
   satellites: ['TROPOMI'],
+  authorEmail: 'lestrada@seas.harvard.edu',
 
   reloadTrigger: [],
 

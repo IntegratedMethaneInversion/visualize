@@ -7,6 +7,7 @@ registerDataset({
   dropdownName: 'Global',   // label in the Dataset dropdown
   description: 'Global column-averaged CO₂ concentrations from satellite observations.',
   satellites: ['OCO-2', 'OCO-3', 'GOSAT', 'GOSAT-2'],
+  authorEmail:'',
 
   mapConfig: {
   initialViewState: { latitude: 20, longitude: 10, zoom: 2 },

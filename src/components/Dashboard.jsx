@@ -87,6 +87,7 @@ export function Dashboard() {
           <div className="dataset-info">
             <h2>{datasetTitle}</h2>
             <p>{renderDescription(activeDataset.description, activeDataset.citation)}</p>
+            <p className="dataset-author">Corresponding author: {activeDataset.authorEmail}</p>
           </div>
 
           {/* ── Emissions totals summary ──────────────────────────────── */}

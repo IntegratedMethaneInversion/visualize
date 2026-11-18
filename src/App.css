@@ -190,7 +190,8 @@ body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-primary
 
 /* Dataset info */
 .dataset-info h2      { font-size: 2.85rem; font-weight: 600; margin-bottom: .3rem; }
-.dataset-info p       { font-size: .85rem; color: var(--text-muted); line-height: 1.5; white-space: pre-line; }
+.dataset-info p       { margin-top: .85rem; color: var(--text-muted); line-height: 1.5; white-space: pre-line; }
+.dataset-info .dataset-author { margin-top: .75rem; }
 .citation-link        { color: var(--accent-text); }
 .citation-link:hover  { text-decoration: underline; }
 

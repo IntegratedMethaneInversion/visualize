@@ -78,6 +78,7 @@ registerDataset({
   */
   citation: { text: 'Hancock et al. (2026)', url: 'https://egusphere.copernicus.org/preprints/2026/egusphere-2025-5478/' },
   satellites: ['TROPOMI', 'GOSAT'],
+  authorEmail: 'sarahhancock@seas.harvard.edu',
 
   reloadTrigger: [],   // load all data once on dataset mount
   gridType:      'json', // signals MapView to use JsonGridLayer instead of RasterLayer

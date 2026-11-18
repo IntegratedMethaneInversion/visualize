@@ -240,10 +240,15 @@ registerDataset({
   // TODO(user): confirm wording
   dropdownName: 'Global - East et al.',   // label in the Dataset dropdown
   description: 'Annual methane emissions by country at 25-km resolution generated \
-  with the IMI using TROPOMI satellite data combined with bottom-up information from \
-  national BTRs. Values in parentheses and error bars are the confidence range from the \
-  inversion ensemble. See East et al. (2025) for details.',
+  with the IMI using TROPOMI satellite data combined with bottom-up emission information \
+  from national biannual transparency reports (BTRs) for anthropogenic sources, the \
+  LPJ-MERRA2 inventory for wetlands, and the GFED4 inventory for open fires. Minor \
+  natural sources from termites and seeps are also included. Values in parentheses \
+  and error bars are the confidence range from the inversion ensemble. \
+  See East et al. (2025) for details.',
   citation: { text: 'East et al. (2025)', url: 'https://www.nature.com/articles/s41467-025-67122-8' },
+  
+  authorEmail: 'djacob@fas.harvard.edu',
  
   // Vestigial - we used to have indicators for which satellites' products were used as model input
   satellites: ['TROPOMI'],

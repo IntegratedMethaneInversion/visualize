@@ -33,7 +33,7 @@ export function getDatasetsByFamily(familyId) {
 // ─── Schema validation ────────────────────────────────────────────────────────
 
 // `name` is the big dashboard title; `dropdownName` is its label in the Dataset dropdown.
-const REQUIRED_FIELDS  = ['id', 'family', 'name', 'dropdownName', 'description', 'mapConfig', 'controls', 'display', 'dataLoader'];
+const REQUIRED_FIELDS  = ['id', 'family', 'name', 'dropdownName', 'description', 'authorEmail', 'mapConfig', 'controls', 'display', 'dataLoader'];
 const VALID_CTRL_TYPES = ['slider', 'select', 'radio', 'multiselect'];
 
 function validateConfig(config) {

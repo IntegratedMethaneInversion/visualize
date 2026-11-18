@@ -34,6 +34,7 @@ registerDataset({
   description: 'Weekly methane emissions for the Permian basin generated with the IMI using TROPOMI satellite data. See Varon et al. (2025) for details.',
   citation: { text: 'Varon et al. (2025)', url: 'https://pubs.acs.org/esthag/article/60/1/425/5082337/Seasonality-and-Declining-Intensity-of-Methane' },
   satellites: ['TROPOMI', 'GHGSat'],
+  authorEmail: 'dvaron@mit.edu',
 
   reloadTrigger: [],
   gridType: 'period', // signals MapView/Legend to resolve tif urls via manifest.data[satellite][sector][period]
