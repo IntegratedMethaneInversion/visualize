@@ -24,9 +24,9 @@ const csvUrl = year => `${import.meta.env.BASE_URL}data/ch4_global/${year}/count
 //   grid      native sector name(s) in the per-country grid files, defaulting
 //             to `key`. An array is summed cell by cell, for the central value
 //             and the ensemble min/max alike.
-//   group     which category the sector belongs to. Nothing reads it yet; it's
-//             here so the anthropogenic/natural split is stated once, in the
-//             same place as the arithmetic that depends on it.
+//   group     which category the sector belongs to, stated once here beside
+//             the arithmetic that depends on it. BAR_SECTORS reads it to mark
+//             which bars get the chart's "contains natural sources" band.
 //
 // `unc` exists as its own field because the file's totals carry *propagated*
 // deltas that are genuinely narrower than the sum of their components'
@@ -100,7 +100,13 @@ const ANTHRO_ONLY_BARS = false;
 
 const BAR_SECTORS = SECTORS
   .filter(s => !ANTHRO_ONLY_BARS || s.group !== 'natural')
-  .map(({ key, label, includes }) => ({ key, label, includes }));
+  // containsNatural drives the Sector Breakdown chart's shaded background
+  // band: the natural sectors themselves, plus 'Total (all sources)', the
+  // only aggregate that sums natural sources in.
+  .map(({ key, label, includes, group }) => ({
+    key, label, includes,
+    containsNatural: group === 'natural' || key === 'Total',
+  }));
 
 // 12 bars x 2 series needs more vertical room than the 8-sector CONUS chart
 // the component defaults to; the 9-bar anthropogenic-only view does not, and

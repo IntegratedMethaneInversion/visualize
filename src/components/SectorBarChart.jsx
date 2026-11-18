@@ -9,6 +9,7 @@ import {
   Tooltip,
   ErrorBar,
   Cell,
+  ReferenceArea,
 }                                  from 'recharts';
 import { useDatasetContext }        from '../context/DatasetContext';
 import { useEmissionData }          from '../hooks/useEmissionData';
@@ -30,6 +31,9 @@ import { slugify }                  from '../utils/csvExport';
 const DIM_COLOR    = '#64748b';
 const BRIGHT_COLOR = '#0f172a';
 const TEAL_COLOR   = '#0d9488';
+// Background band behind bars whose value includes natural sources. A green
+// tint rather than slate, so it isn't mistaken for the hover cursor.
+const NATURAL_BAND_COLOR = '#dcfce7';
 
 // Manifest total_kg values are in the tens-of-millions for a whole-basin
 // week; Gg (1e6 kg) keeps the axis/tooltip numbers readable.
@@ -49,7 +53,9 @@ function resolveBarSectors(labels, barSectors) {
   const indexByKey = new Map(labels.map((key, i) => [key, i]));
   return barSectors
     .filter(({ key }) => indexByKey.has(key))
-    .map(({ key, label, includes }) => ({ key, label, includes, i: indexByKey.get(key) }));
+    .map(({ key, label, includes, containsNatural }) => ({
+      key, label, includes, containsNatural, i: indexByKey.get(key),
+    }));
 }
 
 // Builds Sector Breakdown chart rows from a { labels, values, mins, maxs }
@@ -58,10 +64,11 @@ function resolveBarSectors(labels, barSectors) {
 // branches below, which differ only in which data-building functions
 // produced `data`/`bottomUpData`.
 function buildSectorRows(resolvedSectors, data, bottomUpData, { showUncertainty, showBottomUp, convert }) {
-  return resolvedSectors.map(({ label, includes, i }) => ({
+  return resolvedSectors.map(({ label, includes, containsNatural, i }) => ({
     sector:        label,
     // Sub-sector list for aggregate bars; the tooltip renders it when present.
     includes,
+    containsNatural: !!containsNatural,
     value:         convert(data.values[i]),
     errorRange:    showUncertainty && data.mins[i] != null
       ? [convert(data.mins[i]), convert(data.maxs[i])]
@@ -111,24 +118,50 @@ function buildSectorCsv(chartData, { place, year, units, showUncertainty, showBo
   return { rows, columns };
 }
 
-// Color key for charts that plot both series — swatch colors match the Bar
-// fills exactly (accent = IMI output, TEAL_COLOR = bottom-up).
-function SeriesLegend({ accent }) {
+// Color key for the chart — swatch colors match the Bar fills exactly
+// (accent = IMI output, TEAL_COLOR = bottom-up) and the natural-sources
+// background band. Each entry appears only when its mark is on screen.
+function SeriesLegend({ accent, showSeries = true, showNaturalBand = false }) {
+  if (!showSeries && !showNaturalBand) return null;
   const swatch = color => ({
     width: 8, height: 8, borderRadius: 2, background: color, display: 'inline-block',
   });
+  const entry = { display: 'inline-flex', alignItems: 'center', gap: '0.35rem' };
   return (
-    <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#475569' }}>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-        <span style={swatch(accent)} />
-        IMI Best Estimate
-      </span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-        <span style={swatch(TEAL_COLOR)} />
-        Bottom-up
-      </span>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem 1rem', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#475569' }}>
+      {showSeries && (
+        <>
+          <span style={entry}>
+            <span style={swatch(accent)} />
+            IMI Best Estimate
+          </span>
+          <span style={entry}>
+            <span style={swatch(TEAL_COLOR)} />
+            Bottom-up
+          </span>
+        </>
+      )}
+      {showNaturalBand && (
+        <span style={entry}>
+          <span style={{ ...swatch(NATURAL_BAND_COLOR), width: 12, height: 10, outline: '1px solid #bbf7d0' }} />
+          Contains natural sources
+        </span>
+      )}
     </div>
   );
+}
+
+// Contiguous runs of rows flagged containsNatural, as [firstSector,
+// lastSector] pairs — one ReferenceArea each, since 'Total (all sources)'
+// sits apart from the natural sectors at the bottom of the chart.
+function naturalBandRuns(chartData) {
+  const runs = [];
+  chartData.forEach((row, i) => {
+    if (!row.containsNatural) return;
+    if (i > 0 && chartData[i - 1].containsNatural) runs[runs.length - 1][1] = row.sector;
+    else runs.push([row.sector, row.sector]);
+  });
+  return runs;
 }
 
 function UploadBarTooltip({ active, payload, label, units, accent }) {
@@ -242,7 +275,7 @@ function SectorBarCustomTooltip({
 
 // Header row shared by the ch4-global and default branches: place/year/units
 // plus a loading indicator and the bottom-up legend when that series is shown.
-function SectorChartHeader({ place, year, units, loading, showBottomUp, accent, csv, csvFilename }) {
+function SectorChartHeader({ place, year, units, loading, showBottomUp, showNaturalBand, accent, csv, csvFilename }) {
   return (
     <>
       <div className="chart-header">
@@ -255,7 +288,7 @@ function SectorChartHeader({ place, year, units, loading, showBottomUp, accent, 
           <DownloadCSVButton rows={csv.rows} columns={csv.columns} filename={csvFilename} />
         )}
       </div>
-      {showBottomUp && <SeriesLegend accent={accent} />}
+      <SeriesLegend accent={accent} showSeries={showBottomUp} showNaturalBand={showNaturalBand} />
     </>
   );
 }
@@ -298,6 +331,19 @@ function SectorBarChartBody({
           tickLine={false}
           width={labelWidth}
         />
+
+        {/* Drawn beneath the bars (ReferenceArea's default zIndex is below Bar's). */}
+        {naturalBandRuns(chartData).map(([y1, y2]) => (
+          <ReferenceArea
+            key={y1}
+            y1={y1}
+            y2={y2}
+            fill={NATURAL_BAND_COLOR}
+            fillOpacity={0.7}
+            stroke="none"
+            ifOverflow="extendDomain"
+          />
+        ))}
 
         <Tooltip
           content={
@@ -495,6 +541,7 @@ export function SectorBarChart() {
           units={displayUnits}
           loading={loading}
           showBottomUp={showBottomUp}
+          showNaturalBand={chartData.some(r => r.containsNatural)}
           accent={accent}
           csv={csv}
           csvFilename={`sector-emissions_${slugify(placeLabel)}_${slugify(controls.year)}.csv`}
@@ -556,6 +603,7 @@ export function SectorBarChart() {
         units={displayUnits}
         loading={loading}
         showBottomUp={showBottomUp}
+        showNaturalBand={chartData.some(r => r.containsNatural)}
         accent={accent}
         csv={csv}
         csvFilename={`sector-emissions_${slugify(placeLabel)}_${slugify(controls.year)}.csv`}
