@@ -327,7 +327,13 @@ registerDataset({
     // Text for the info bubble next to the Sensitivity line under the
     // DataTotals table (selected country only).
     // TODO(user): replace with the real explanation
-    sensitivityInfo: 'Sensitivity indicates the percentage of information in the IMI estimate that comes from the satellite data versus the bottom-up estimate. We have generally higher confidence with higher sensitivity values.',
+    sensitivityInfo: 'Sensitivity \
+    ranges from 0 to 1 and measures the fraction of information coming \
+    from the satellite observations vs the bottom-up estimate. \
+    A sensitivity of 0 means that the IMI defaults \
+    to the bottom-up data. A sensitivity of 1 means that the IMI output \
+    is fully defined by the satellite observations.',
+    
     // Order, labels and sub-sector lists for the Sector Breakdown bar chart,
     // straight off SECTORS so the bars and the Sector dropdown can never drift
     // apart on wording or arithmetic — subject to the temporary
